@@ -1,0 +1,10 @@
+.git
+.github
+.venv
+.local
+.env*
+tests
+docs
+htmlcov
+__pycache__
+uv.lock

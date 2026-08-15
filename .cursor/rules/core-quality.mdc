@@ -1,0 +1,13 @@
+---
+description: Core repository engineering gates
+alwaysApply: true
+---
+
+# Core quality
+
+Preserve Core's exclusive data ownership and version public interfaces under
+`/api/v1`. Define behavior with User Stories and executable Gherkin. Treat code
+documentation as a reviewed engineering artifact: a reader without chat context
+must understand boundaries, contracts, side effects, failures and invariants.
+Run the complete Make quality interface before committing a finished step.
+
