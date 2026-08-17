@@ -1,24 +1,15 @@
 """pytest-bdd bindings that execute the Core platform Gherkin contract."""
 
-import anyio
 import httpx
 from pytest_bdd import scenarios, then, when
-
-from job_search_core.app import create_app
+from tests.support import ApiClient
 
 scenarios("../features/core_platform.feature")
 
 
 def request(path: str) -> httpx.Response:
     """Send a synchronous BDD step through HTTPX's maintained ASGI transport."""
-
-    async def send() -> httpx.Response:
-        """Isolate the asynchronous client lifecycle from pytest-bdd steps."""
-        transport = httpx.ASGITransport(app=create_app())
-        async with httpx.AsyncClient(transport=transport, base_url="http://core.test") as client:
-            return await client.get(path)
-
-    return anyio.run(send)
+    return ApiClient().get(path)
 
 
 @when("клиент запрашивает статус готовности Core", target_fixture="response")

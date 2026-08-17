@@ -7,9 +7,9 @@ contracts and never access its database directly.
 
 ## Current status
 
-The platform scaffold is implemented: application factory, health endpoints,
-JSON component-info CLI, quality gates, executable Gherkin, CI and Docker build.
-Domain entities and PostgreSQL are the next increment and are not implemented yet.
+The first domain slice is implemented: Core owns PostgreSQL migrations, normalized
+Company/Vacancy persistence, database-aware readiness, idempotent `/api/v1`
+create/list contracts and equivalent machine-readable CLI operations.
 
 ## Quick start
 
@@ -32,7 +32,12 @@ make test          # format, lint, types, unit, integration, contract and BDD
 make smoke         # versioned JSON CLI response
 make build         # Docker image job-search-core:dev
 make dev           # Uvicorn with hot reload
+make migrate       # apply Core-owned Alembic migrations
+docker compose up --build  # PostgreSQL 17 + migrated Core API
 ```
+
+Set `CORE_PORT` when port 8000 is occupied, for example
+`CORE_PORT=18080 docker compose up --build`.
 
 The Docker build exports a hash-locked runtime requirements file from `uv.lock`;
 the image needs only the standard Python base and does not depend on a second
@@ -41,15 +46,18 @@ package-manager image registry.
 ## Contracts
 
 - `GET /health/live` — process liveness without dependency checks.
-- `GET /health/ready` — readiness; PostgreSQL check will be added with persistence.
+- `GET /health/ready` — database-backed readiness.
+- `POST /api/v1/vacancies` — create with mandatory `Idempotency-Key`.
+- `GET /api/v1/vacancies` — list normalized vacancies and companies.
 - `job-search-core info` — one versioned JSON envelope on stdout.
+- `job-search-core vacancy create|list` — matching JSON CLI workflow.
 
 See [the platform feature spec](docs/specs/core-platform.md) and executable
 [Gherkin scenario](tests/features/core_platform.feature).
 
 ## Architecture boundaries
 
-- Core will be the sole owner of PostgreSQL and migrations.
+- Core is the sole owner of PostgreSQL and Alembic migrations.
 - Consumers use public contracts, not Python imports or shared volumes.
 - Runtime secrets belong in environment variables; `.env` files are ignored.
 - Tests and examples use synthetic data.

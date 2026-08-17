@@ -12,6 +12,8 @@ COPY requirements.runtime.txt ./
 RUN python -m pip install --root-user-action=ignore --no-cache-dir --require-hashes \
     -r requirements.runtime.txt
 COPY src ./src
+COPY alembic.ini ./
+COPY migrations ./migrations
 
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \

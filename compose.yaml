@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: job_search
+      POSTGRES_USER: job_search
+      POSTGRES_PASSWORD: job_search
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U job_search -d job_search"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  core:
+    build: .
+    environment:
+      JOB_SEARCH_CORE_DATABASE_URL: postgresql+psycopg://job_search:job_search@postgres:5432/job_search
+    command:
+      - /bin/sh
+      - -c
+      - alembic upgrade head && uvicorn job_search_core.app:app --host 0.0.0.0 --port 8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${CORE_PORT:-8000}:8000"
+
+volumes:
+  postgres-data:

@@ -10,8 +10,11 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 dependencies = [
+  "alembic>=1.16,<2",
   "fastapi>=0.116,<1",
+  "psycopg[binary]>=3.2,<4",
   "pydantic-settings>=2.10,<3",
+  "sqlalchemy>=2.0,<3",
   "uvicorn[standard]>=0.35,<1",
 ]
 
@@ -32,6 +35,7 @@ packages = ["src/job_search_core"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "--strict-markers --strict-config"
 filterwarnings = ["error"]
 
@@ -47,4 +51,3 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 packages = ["job_search_core"]
-

@@ -1,6 +1,6 @@
-.PHONY: bootstrap dev format format-check lint typecheck unit integration contract bdd test build smoke
+.PHONY: bootstrap dev migrate format format-check lint typecheck unit integration contract bdd test build smoke
 
-UV ?= uv
+UV ?= env -u VIRTUAL_ENV uv
 export UV_LINK_MODE := copy
 
 bootstrap:
@@ -8,6 +8,9 @@ bootstrap:
 
 dev: bootstrap
 	$(UV) run uvicorn job_search_core.app:app --host 0.0.0.0 --port 8000 --reload
+
+migrate: bootstrap
+	$(UV) run alembic upgrade head
 
 format:
 	$(UV) run ruff format .

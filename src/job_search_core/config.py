@@ -7,8 +7,9 @@ class Settings(BaseSettings):
     """Process settings for the Core HTTP server.
 
     The ``JOB_SEARCH_CORE_`` prefix prevents collisions with sibling services.
-    Secrets are deliberately absent until PostgreSQL is introduced; future
-    credentials must come from runtime environment, never committed files.
+    PostgreSQL credentials come from the runtime database URL. The development
+    default is intentionally local-only and must be replaced by deployment
+    secret injection outside a developer workstation.
     """
 
     model_config = SettingsConfigDict(env_prefix="JOB_SEARCH_CORE_", extra="ignore")
@@ -16,3 +17,4 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     log_level: str = "INFO"
+    database_url: str = "postgresql+psycopg://job_search:job_search@127.0.0.1:5432/job_search"
