@@ -62,3 +62,25 @@ def response_is_idempotency_conflict(conflict_response: httpx.Response) -> None:
     """Return the stable conflict code rather than overwriting existing data."""
     assert conflict_response.status_code == 409
     assert conflict_response.json()["code"] == "idempotency_conflict"
+
+
+@when(
+    "клиент создаёт вакансию и меняет её статус на shortlisted",
+    target_fixture="status_response",
+)
+def create_and_shortlist_vacancy() -> httpx.Response:
+    """Create one vacancy and update it only through versioned HTTP contracts."""
+    client = ApiClient()
+    vacancy = client.post(
+        "/api/v1/vacancies",
+        json=vacancy_payload(),
+        headers={"Idempotency-Key": "bdd-status"},
+    ).json()
+    return client.patch(f"/api/v1/vacancies/{vacancy['id']}", json={"status": "shortlisted"})
+
+
+@then("Core возвращает вакансию со статусом shortlisted")
+def vacancy_is_shortlisted(status_response: httpx.Response) -> None:
+    """Expose the committed funnel status to consumers."""
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "shortlisted"

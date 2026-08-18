@@ -52,6 +52,10 @@ class ApiClient:
         """Send a JSON POST request with explicit headers."""
         return self.request("POST", path, json=json, headers=headers)
 
+    def patch(self, path: str, *, json: dict[str, object]) -> httpx.Response:
+        """Send a JSON PATCH request."""
+        return self.request("PATCH", path, json=json)
+
 
 def vacancy_payload(*, title: str = "Backend Engineer") -> dict[str, object]:
     """Return a public synthetic vacancy with no personal or provider credentials."""

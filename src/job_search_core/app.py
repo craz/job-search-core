@@ -18,12 +18,20 @@ from sqlalchemy.exc import SQLAlchemyError
 from job_search_core import __version__
 from job_search_core.config import Settings
 from job_search_core.database import Database
-from job_search_core.schemas import ErrorDetail, VacancyCreate, VacancyList, VacancyRead
+from job_search_core.schemas import (
+    ErrorDetail,
+    VacancyCreate,
+    VacancyList,
+    VacancyRead,
+    VacancyStatusUpdate,
+)
 from job_search_core.vacancies import (
     IdempotencyConflictError,
     VacancyAlreadyExistsError,
+    VacancyNotFoundError,
     create_vacancy,
     list_vacancies,
+    update_vacancy_status,
 )
 
 COMPONENT_NAME: Final = "job-search-core"
@@ -121,6 +129,23 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
         with persistence.session() as session:
             items = [VacancyRead.model_validate(item) for item in list_vacancies(session)]
         return VacancyList(items=items, total=len(items))
+
+    @application.patch(
+        "/api/v1/vacancies/{vacancy_id}",
+        response_model=VacancyRead,
+        responses={404: {"model": ErrorDetail}},
+        tags=["vacancies"],
+    )
+    def patch_vacancy_status(
+        vacancy_id: uuid.UUID, request: VacancyStatusUpdate
+    ) -> VacancyRead | JSONResponse:
+        """Change a vacancy funnel status through the public Core contract."""
+        try:
+            with persistence.session() as session:
+                vacancy = update_vacancy_status(session, vacancy_id, request.status)
+                return VacancyRead.model_validate(vacancy)
+        except VacancyNotFoundError:
+            return error_response("vacancy_not_found", "Vacancy does not exist", 404)
 
     return application
 

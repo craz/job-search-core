@@ -22,3 +22,5 @@ def test_vacancy_v1_contract_requires_idempotency_and_publishes_schemas() -> Non
     assert key["required"] is True
     assert "VacancyRead" in document["components"]["schemas"]
     assert "ErrorDetail" in document["components"]["schemas"]
+    assert "patch" in document["paths"]["/api/v1/vacancies/{vacancy_id}"]
+    assert "VacancyStatusUpdate" in document["components"]["schemas"]

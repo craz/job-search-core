@@ -49,6 +49,7 @@ package-manager image registry.
 - `GET /health/ready` — database-backed readiness.
 - `POST /api/v1/vacancies` — create with mandatory `Idempotency-Key`.
 - `GET /api/v1/vacancies` — list normalized vacancies and companies.
+- `PATCH /api/v1/vacancies/{vacancy_id}` — change the controlled funnel status.
 - `job-search-core info` — one versioned JSON envelope on stdout.
 - `job-search-core vacancy create|list` — matching JSON CLI workflow.
 

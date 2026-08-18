@@ -1,15 +1,16 @@
-"""Transactional application service for creating and listing vacancies."""
+"""Transactional application service for creating, listing and updating vacancies."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from job_search_core.models import Company, Vacancy
+from job_search_core.models import Company, Vacancy, VacancyStatus
 from job_search_core.schemas import VacancyCreate
 
 
@@ -19,6 +20,10 @@ class IdempotencyConflictError(Exception):
 
 class VacancyAlreadyExistsError(Exception):
     """Signal that a source vacancy identity is already owned by another request."""
+
+
+class VacancyNotFoundError(Exception):
+    """Signal that a requested vacancy identifier does not exist."""
 
 
 @dataclass(frozen=True)
@@ -96,3 +101,17 @@ def list_vacancies(session: Session) -> list[Vacancy]:
             .order_by(Vacancy.created_at.desc(), Vacancy.id.desc())
         )
     )
+
+
+def update_vacancy_status(
+    session: Session, vacancy_id: uuid.UUID, vacancy_status: VacancyStatus
+) -> Vacancy:
+    """Set one vacancy status and return the fully loaded persisted representation."""
+    vacancy = session.scalar(
+        select(Vacancy).options(joinedload(Vacancy.company)).where(Vacancy.id == vacancy_id)
+    )
+    if vacancy is None:
+        raise VacancyNotFoundError
+    vacancy.status = vacancy_status
+    session.flush()
+    return vacancy

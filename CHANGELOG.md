@@ -12,4 +12,5 @@ Keep a Changelog and versions follow Semantic Versioning.
 - Unit, integration, contract and executable BDD test layers.
 - PostgreSQL Company/Vacancy schema and first Alembic migration.
 - Idempotent Vacancy create/list contracts through `/api/v1` and JSON CLI.
+- Controlled Vacancy status updates through `PATCH /api/v1/vacancies/{vacancy_id}`.
 - Database-aware readiness and an independent PostgreSQL 17 Compose stack.

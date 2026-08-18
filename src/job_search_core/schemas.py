@@ -57,6 +57,12 @@ class VacancyList(BaseModel):
     total: int
 
 
+class VacancyStatusUpdate(BaseModel):
+    """Controlled status transition requested by an API consumer."""
+
+    status: VacancyStatus
+
+
 class ErrorDetail(BaseModel):
     """Machine-readable error body shared by expected API failures."""
 

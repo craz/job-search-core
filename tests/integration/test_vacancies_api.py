@@ -63,3 +63,24 @@ def test_source_identity_cannot_be_created_under_a_second_key() -> None:
     assert first.status_code == 201
     assert duplicate.status_code == 409
     assert duplicate.json()["code"] == "vacancy_exists"
+
+
+def test_update_vacancy_status_and_report_missing_identifier() -> None:
+    """A consumer can move a vacancy through the funnel without database access."""
+    client = ApiClient()
+    created = client.post(
+        "/api/v1/vacancies",
+        json=vacancy_payload(),
+        headers={"Idempotency-Key": "fixture-status-update"},
+    ).json()
+
+    updated = client.patch(f"/api/v1/vacancies/{created['id']}", json={"status": "shortlisted"})
+    missing = client.patch(
+        "/api/v1/vacancies/00000000-0000-0000-0000-000000000000",
+        json={"status": "rejected"},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "shortlisted"
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "vacancy_not_found"
