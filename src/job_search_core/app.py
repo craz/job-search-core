@@ -16,9 +16,19 @@ from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 
 from job_search_core import __version__
+from job_search_core.applications import (
+    ApplicationAlreadyExistsError,
+    ApplicationIdempotencyConflictError,
+    ApplicationVacancyNotFoundError,
+    create_application,
+    list_applications,
+)
 from job_search_core.config import Settings
 from job_search_core.database import Database
 from job_search_core.schemas import (
+    ApplicationCreate,
+    ApplicationList,
+    ApplicationRead,
     ErrorDetail,
     VacancyCreate,
     VacancyList,
@@ -146,6 +156,47 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
                 return VacancyRead.model_validate(vacancy)
         except VacancyNotFoundError:
             return error_response("vacancy_not_found", "Vacancy does not exist", 404)
+
+    @application.post(
+        "/api/v1/applications",
+        response_model=ApplicationRead,
+        status_code=status.HTTP_201_CREATED,
+        responses={404: {"model": ErrorDetail}, 409: {"model": ErrorDetail}},
+        tags=["applications"],
+    )
+    def post_application(
+        request: ApplicationCreate,
+        response: Response,
+        idempotency_key: str = Header(min_length=1, max_length=255, alias="Idempotency-Key"),
+    ) -> ApplicationRead | JSONResponse:
+        """Persist one normalized Application or safely replay an identical request."""
+        try:
+            with persistence.session() as session:
+                result = create_application(session, request, idempotency_key)
+                payload = ApplicationRead.model_validate(result.application)
+        except ApplicationIdempotencyConflictError:
+            return error_response(
+                "idempotency_conflict",
+                "Idempotency-Key was already used for a different request",
+                409,
+            )
+        except ApplicationAlreadyExistsError:
+            return error_response(
+                "application_exists",
+                "An application with this source identity already exists",
+                409,
+            )
+        except ApplicationVacancyNotFoundError:
+            return error_response("vacancy_not_found", "Vacancy does not exist", 404)
+        response.status_code = 201 if result.created else 200
+        return payload
+
+    @application.get("/api/v1/applications", response_model=ApplicationList, tags=["applications"])
+    def get_applications() -> ApplicationList:
+        """List normalized Applications without exposing Core persistence."""
+        with persistence.session() as session:
+            items = [ApplicationRead.model_validate(item) for item in list_applications(session)]
+        return ApplicationList(items=items, total=len(items))
 
     return application
 

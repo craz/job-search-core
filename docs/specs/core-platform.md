@@ -19,6 +19,6 @@
 
 ## Non-scope
 
-The Company/Vacancy domain behavior is specified separately by executable
-`tests/features/vacancy_management.feature`. Applications, metrics, people,
-hypotheses and assessments remain outside this platform increment.
+Company/Vacancy and Application behavior are specified separately by executable
+feature files. Metrics, people, hypotheses and assessments remain outside this
+platform increment.

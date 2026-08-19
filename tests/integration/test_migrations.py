@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, inspect
 
 
 def test_migration_upgrades_an_empty_database(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """A clean database receives Company/Vacancy tables through Alembic only."""
+    """A clean database receives all Core-owned tables through Alembic only."""
     database_path = tmp_path / "core.db"
     database_url = f"sqlite+pysqlite:///{database_path}"
     monkeypatch.setenv("JOB_SEARCH_CORE_DATABASE_URL", database_url)
@@ -18,4 +18,4 @@ def test_migration_upgrades_an_empty_database(tmp_path: Path, monkeypatch: Monke
     command.upgrade(configuration, "head")
 
     tables = set(inspect(create_engine(database_url)).get_table_names())
-    assert {"alembic_version", "companies", "vacancies"} <= tables
+    assert {"alembic_version", "companies", "vacancies", "applications"} <= tables

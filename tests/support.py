@@ -68,3 +68,27 @@ def vacancy_payload(*, title: str = "Backend Engineer") -> dict[str, object]:
         "url": "https://example.com/vacancies/100",
         "description": "Build a synthetic API fixture.",
     }
+
+
+def create_fixture_vacancy(client: ApiClient, *, key: str = "fixture-vacancy") -> dict[str, object]:
+    """Persist and return one synthetic Vacancy for related-resource tests."""
+    response = client.post(
+        "/api/v1/vacancies", json=vacancy_payload(), headers={"Idempotency-Key": key}
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def application_payload(vacancy_id: object) -> dict[str, object]:
+    """Return a normalized synthetic Application linked to a fixture Vacancy."""
+    return {
+        "vacancy_id": str(vacancy_id),
+        "source": "fixture",
+        "external_id": "application-100",
+        "applied_at": "2026-08-19T09:30:00Z",
+        "resume_version": "synthetic-v1",
+        "cover_letter_version": "fixture-cover-v1",
+        "cover_letter_text": "Synthetic application fixture.",
+        "next_action": "Review synthetic reply",
+        "next_action_at": "2026-08-20T09:30:00Z",
+    }

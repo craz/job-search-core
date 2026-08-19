@@ -28,6 +28,15 @@ class VacancyStatus(StrEnum):
     SHORTLISTED = "shortlisted"
 
 
+class ApplicationResult(StrEnum):
+    """Controlled observed outcomes for a submitted job application."""
+
+    REPLY = "reply"
+    INTERVIEW = "interview"
+    REJECTED = "rejected"
+    OFFER = "offer"
+
+
 class Company(Base):
     """Normalized employer identity referenced by vacancies."""
 
@@ -73,3 +82,37 @@ class Vacancy(Base):
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
     company: Mapped[Company] = relationship(back_populates="vacancies")
+    applications: Mapped[list[Application]] = relationship(back_populates="vacancy")
+
+
+class Application(Base):
+    """Normalized application event linked to one Core-owned vacancy."""
+
+    __tablename__ = "applications"
+    __table_args__ = (
+        UniqueConstraint("source", "external_id", name="uq_applications_source_external_id"),
+        UniqueConstraint("idempotency_key", name="uq_applications_idempotency_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    vacancy_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("vacancies.id", ondelete="RESTRICT"), index=True
+    )
+    source: Mapped[str] = mapped_column(String(64))
+    external_id: Mapped[str] = mapped_column(String(255))
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    resume_version: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cover_letter_version: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cover_letter_text: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    result: Mapped[ApplicationResult | None] = mapped_column(
+        Enum(ApplicationResult, name="application_result", native_enum=False), nullable=True
+    )
+    next_action: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    next_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    request_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    vacancy: Mapped[Vacancy] = relationship(back_populates="applications")

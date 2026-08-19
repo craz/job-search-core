@@ -13,4 +13,5 @@ Keep a Changelog and versions follow Semantic Versioning.
 - PostgreSQL Company/Vacancy schema and first Alembic migration.
 - Idempotent Vacancy create/list contracts through `/api/v1` and JSON CLI.
 - Controlled Vacancy status updates through `PATCH /api/v1/vacancies/{vacancy_id}`.
+- Application migration, idempotent create/list API and equivalent JSON CLI.
 - Database-aware readiness and an independent PostgreSQL 17 Compose stack.

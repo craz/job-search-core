@@ -7,9 +7,10 @@ contracts and never access its database directly.
 
 ## Current status
 
-The first domain slice is implemented: Core owns PostgreSQL migrations, normalized
-Company/Vacancy persistence, database-aware readiness, idempotent `/api/v1`
-create/list contracts and equivalent machine-readable CLI operations.
+Core owns PostgreSQL migrations and normalized Company, Vacancy and Application
+persistence. Vacancy and Application create/list contracts are idempotent,
+database readiness is explicit, and machine-readable CLI operations mirror the
+public resource workflows.
 
 ## Quick start
 
@@ -50,11 +51,15 @@ package-manager image registry.
 - `POST /api/v1/vacancies` — create with mandatory `Idempotency-Key`.
 - `GET /api/v1/vacancies` — list normalized vacancies and companies.
 - `PATCH /api/v1/vacancies/{vacancy_id}` — change the controlled funnel status.
+- `POST /api/v1/applications` — record an Application with mandatory idempotency.
+- `GET /api/v1/applications` — list Applications with their Vacancy identity.
 - `job-search-core info` — one versioned JSON envelope on stdout.
 - `job-search-core vacancy create|list` — matching JSON CLI workflow.
+- `job-search-core application create|list` — matching Application JSON CLI.
 
-See [the platform feature spec](docs/specs/core-platform.md) and executable
-[Gherkin scenario](tests/features/core_platform.feature).
+See the [platform](docs/specs/core-platform.md),
+[Vacancy](docs/specs/vacancy-management.md) and
+[Application](docs/specs/application-management.md) feature specifications.
 
 ## Architecture boundaries
 

@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
-from job_search_core.models import VacancyStatus
+from job_search_core.models import ApplicationResult, VacancyStatus
 
 
 class VacancyCreate(BaseModel):
@@ -61,6 +61,58 @@ class VacancyStatusUpdate(BaseModel):
     """Controlled status transition requested by an API consumer."""
 
     status: VacancyStatus
+
+
+class ApplicationCreate(BaseModel):
+    """Validated normalized application accepted from service consumers."""
+
+    vacancy_id: uuid.UUID
+    source: str = Field(min_length=1, max_length=64)
+    external_id: str = Field(min_length=1, max_length=255)
+    applied_at: datetime | None = None
+    resume_version: str | None = Field(default=None, max_length=255)
+    cover_letter_version: str | None = Field(default=None, max_length=255)
+    cover_letter_text: str | None = None
+    result: ApplicationResult | None = None
+    next_action: str | None = Field(default=None, max_length=500)
+    next_action_at: datetime | None = None
+
+
+class ApplicationVacancyRead(BaseModel):
+    """Minimal stable vacancy identity embedded in Application responses."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    status: VacancyStatus
+
+
+class ApplicationRead(BaseModel):
+    """Public persisted Application representation returned by API and CLI."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source: str
+    external_id: str
+    applied_at: datetime
+    resume_version: str | None
+    cover_letter_version: str | None
+    cover_letter_text: str | None
+    result: ApplicationResult | None
+    next_action: str | None
+    next_action_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    vacancy: ApplicationVacancyRead
+
+
+class ApplicationList(BaseModel):
+    """Stable Application collection envelope with explicit total count."""
+
+    items: list[ApplicationRead]
+    total: int
 
 
 class ErrorDetail(BaseModel):

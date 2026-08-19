@@ -24,3 +24,15 @@ def test_vacancy_v1_contract_requires_idempotency_and_publishes_schemas() -> Non
     assert "ErrorDetail" in document["components"]["schemas"]
     assert "patch" in document["paths"]["/api/v1/vacancies/{vacancy_id}"]
     assert "VacancyStatusUpdate" in document["components"]["schemas"]
+
+
+def test_application_v1_contract_requires_idempotency_and_publishes_schemas() -> None:
+    """Consumers can discover Application create/list and required retry metadata."""
+    document = create_app().openapi()
+    path = document["paths"]["/api/v1/applications"]
+
+    assert {"get", "post"} <= path.keys()
+    key = next(item for item in path["post"]["parameters"] if item["name"] == "Idempotency-Key")
+    assert key["required"] is True
+    assert "ApplicationCreate" in document["components"]["schemas"]
+    assert "ApplicationRead" in document["components"]["schemas"]

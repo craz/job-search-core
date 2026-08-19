@@ -11,9 +11,16 @@ from dataclasses import asdict, dataclass
 import uvicorn
 
 from job_search_core.app import component_info
+from job_search_core.applications import (
+    ApplicationAlreadyExistsError,
+    ApplicationIdempotencyConflictError,
+    ApplicationVacancyNotFoundError,
+    create_application,
+    list_applications,
+)
 from job_search_core.config import Settings
 from job_search_core.database import Database
-from job_search_core.schemas import VacancyCreate, VacancyRead
+from job_search_core.schemas import ApplicationCreate, ApplicationRead, VacancyCreate, VacancyRead
 from job_search_core.vacancies import (
     IdempotencyConflictError,
     VacancyAlreadyExistsError,
@@ -66,6 +73,24 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--url", required=True)
     create.add_argument("--description")
     vacancy_commands.add_parser("list", help="list persisted vacancies")
+
+    application = subparsers.add_parser("application", help="manage normalized applications")
+    application_commands = application.add_subparsers(dest="application_command", required=True)
+    application_create = application_commands.add_parser(
+        "create", help="idempotently create an application"
+    )
+    application_create.add_argument("--idempotency-key", required=True)
+    application_create.add_argument("--vacancy-id", required=True)
+    application_create.add_argument("--source", required=True)
+    application_create.add_argument("--external-id", required=True)
+    application_create.add_argument("--applied-at")
+    application_create.add_argument("--resume-version")
+    application_create.add_argument("--cover-letter-version")
+    application_create.add_argument("--cover-letter-text")
+    application_create.add_argument("--result")
+    application_create.add_argument("--next-action")
+    application_create.add_argument("--next-action-at")
+    application_commands.add_parser("list", help="list persisted applications")
     return parser
 
 
@@ -111,6 +136,45 @@ def vacancy_payload(args: argparse.Namespace, database: Database) -> tuple[Envel
     return envelope("vacancy.create", data=data), 0
 
 
+def application_payload(args: argparse.Namespace, database: Database) -> tuple[Envelope, int]:
+    """Execute one transactional Application subcommand and return JSON output."""
+    if args.application_command == "list":
+        with database.session() as session:
+            items = [
+                ApplicationRead.model_validate(item).model_dump(mode="json")
+                for item in list_applications(session)
+            ]
+        return envelope("application.list", data={"items": items, "total": len(items)}), 0
+
+    request = ApplicationCreate(
+        vacancy_id=args.vacancy_id,
+        source=args.source,
+        external_id=args.external_id,
+        applied_at=args.applied_at,
+        resume_version=args.resume_version,
+        cover_letter_version=args.cover_letter_version,
+        cover_letter_text=args.cover_letter_text,
+        result=args.result,
+        next_action=args.next_action,
+        next_action_at=args.next_action_at,
+    )
+    try:
+        with database.session() as session:
+            result = create_application(session, request, args.idempotency_key)
+            data = ApplicationRead.model_validate(result.application).model_dump(mode="json")
+            data["created"] = result.created
+    except ApplicationIdempotencyConflictError:
+        error = {"code": "idempotency_conflict", "message": "key used for different request"}
+        return envelope("application.create", data={}, errors=[error]), 1
+    except ApplicationAlreadyExistsError:
+        error = {"code": "application_exists", "message": "source application already exists"}
+        return envelope("application.create", data={}, errors=[error]), 1
+    except ApplicationVacancyNotFoundError:
+        error = {"code": "vacancy_not_found", "message": "vacancy does not exist"}
+        return envelope("application.create", data={}, errors=[error]), 1
+    return envelope("application.create", data=data), 0
+
+
 def emit(payload: Envelope) -> None:
     """Write exactly one deterministic JSON document to standard output."""
     print(json.dumps(asdict(payload), ensure_ascii=False, sort_keys=True))
@@ -125,6 +189,10 @@ def main(argv: Sequence[str] | None = None, *, database: Database | None = None)
     settings = Settings()
     if args.command == "vacancy":
         payload, exit_code = vacancy_payload(args, database or Database(settings.database_url))
+        emit(payload)
+        return exit_code
+    if args.command == "application":
+        payload, exit_code = application_payload(args, database or Database(settings.database_url))
         emit(payload)
         return exit_code
 

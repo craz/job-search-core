@@ -1,4 +1,4 @@
-"""Unit tests for the versioned machine-facing Vacancy CLI."""
+"""Unit tests for versioned machine-facing Core resource commands."""
 
 import json
 
@@ -6,6 +6,7 @@ from pytest import CaptureFixture
 from tests.support import create_test_database
 
 from job_search_core.cli import main
+from job_search_core.models import Company, Vacancy
 
 
 def test_vacancy_create_and_list_emit_one_versioned_json_document(
@@ -41,5 +42,49 @@ def test_vacancy_create_and_list_emit_one_versioned_json_document(
     listing = json.loads(list_output)
     assert created["contract_version"] == "1.0"
     assert created["command"] == "vacancy.create"
+    assert created["data"]["created"] is True
+    assert listing["data"]["total"] == 1
+
+
+def test_application_create_and_list_emit_versioned_json(
+    capsys: CaptureFixture[str],
+) -> None:
+    """CLI automation can record and retrieve an Application without prose."""
+    database = create_test_database()
+    with database.session() as session:
+        company = Company(name="CLI Labs", source="fixture", external_id="cli-company")
+        vacancy = Vacancy(
+            company=company,
+            source="fixture",
+            external_id="cli-vacancy",
+            title="CLI Application Engineer",
+            url="https://example.com/cli-vacancy",
+            idempotency_key="cli-vacancy-key",
+            request_fingerprint="fixture",
+        )
+        session.add(vacancy)
+        session.flush()
+        vacancy_id = str(vacancy.id)
+
+    create_args = [
+        "application",
+        "create",
+        "--idempotency-key",
+        "cli-application-key",
+        "--vacancy-id",
+        vacancy_id,
+        "--source",
+        "fixture",
+        "--external-id",
+        "cli-application",
+        "--applied-at",
+        "2026-08-19T10:00:00Z",
+    ]
+    assert main(create_args, database=database) == 0
+    created = json.loads(capsys.readouterr().out)
+    assert main(["application", "list"], database=database) == 0
+    listing = json.loads(capsys.readouterr().out)
+
+    assert created["command"] == "application.create"
     assert created["data"]["created"] is True
     assert listing["data"]["total"] == 1
