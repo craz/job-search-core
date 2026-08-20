@@ -38,6 +38,13 @@ class CompanyRead(BaseModel):
     name: str
     source: str
     external_id: str
+    website_url: str | None
+
+
+class CompanyWebsiteUpdate(BaseModel):
+    """Confirmed normalized official website supplied by a trusted integration."""
+
+    website_url: HttpUrl
 
 
 class VacancyRead(BaseModel):

@@ -31,6 +31,7 @@ from job_search_core.assessments import (
     create_assessment,
     list_assessments,
 )
+from job_search_core.companies import CompanyNotFoundError, set_company_website
 from job_search_core.config import Settings
 from job_search_core.database import Database
 from job_search_core.hypotheses import (
@@ -69,6 +70,8 @@ from job_search_core.schemas import (
     AssessmentCreate,
     AssessmentList,
     AssessmentRead,
+    CompanyRead,
+    CompanyWebsiteUpdate,
     DailyMetricList,
     DailyMetricRead,
     DailyMetricUpdate,
@@ -190,6 +193,23 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
         with persistence.session() as session:
             items = [VacancyRead.model_validate(item) for item in list_vacancies(session)]
         return VacancyList(items=items, total=len(items))
+
+    @application.put(
+        "/api/v1/companies/{company_id}/website",
+        response_model=CompanyRead,
+        responses={404: {"model": ErrorDetail}},
+        tags=["companies"],
+    )
+    def put_company_website(
+        company_id: uuid.UUID, request: CompanyWebsiteUpdate
+    ) -> CompanyRead | JSONResponse:
+        """Store only an explicitly confirmed normalized official website URL."""
+        try:
+            with persistence.session() as session:
+                company = set_company_website(session, company_id, request)
+                return CompanyRead.model_validate(company)
+        except CompanyNotFoundError:
+            return error_response("company_not_found", "Company does not exist", 404)
 
     @application.patch(
         "/api/v1/vacancies/{vacancy_id}",

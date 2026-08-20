@@ -94,6 +94,7 @@ class Company(Base):
     name: Mapped[str] = mapped_column(String(255))
     source: Mapped[str] = mapped_column(String(64))
     external_id: Mapped[str] = mapped_column(String(255))
+    website_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     vacancies: Mapped[list[Vacancy]] = relationship(back_populates="company")
     people: Mapped[list[Person]] = relationship(back_populates="company")
