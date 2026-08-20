@@ -3,10 +3,21 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -116,3 +127,49 @@ class Application(Base):
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
     vacancy: Mapped[Vacancy] = relationship(back_populates="applications")
+
+
+class DailyMetric(Base):
+    """One normalized job-search activity snapshot for a calendar date."""
+
+    __tablename__ = "daily_metrics"
+    __table_args__ = (
+        CheckConstraint("views_total IS NULL OR views_total >= 0", name="ck_metrics_views_total"),
+        CheckConstraint("views_new IS NULL OR views_new >= 0", name="ck_metrics_views_new"),
+        CheckConstraint(
+            "applications IS NULL OR applications >= 0", name="ck_metrics_applications"
+        ),
+        CheckConstraint("replies IS NULL OR replies >= 0", name="ck_metrics_replies"),
+        CheckConstraint("invitations IS NULL OR invitations >= 0", name="ck_metrics_invitations"),
+        CheckConstraint("rejections IS NULL OR rejections >= 0", name="ck_metrics_rejections"),
+    )
+
+    metric_date: Mapped[date] = mapped_column(Date(), primary_key=True)
+    views_total: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    views_new: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    applications: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    replies: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    invitations: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    rejections: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class DailyMetricRequest(Base):
+    """Processed metric write key preventing delayed retries from reapplying updates."""
+
+    __tablename__ = "daily_metric_requests"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_metric_requests_idempotency_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    metric_date: Mapped[date] = mapped_column(
+        Date(), ForeignKey("daily_metrics.metric_date", ondelete="RESTRICT"), index=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    request_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

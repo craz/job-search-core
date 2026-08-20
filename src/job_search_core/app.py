@@ -8,9 +8,10 @@ header and one transaction per request; consumers never receive database access.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Final
 
-from fastapi import FastAPI, Header, Response, status
+from fastapi import FastAPI, Header, Query, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
@@ -25,10 +26,21 @@ from job_search_core.applications import (
 )
 from job_search_core.config import Settings
 from job_search_core.database import Database
+from job_search_core.metrics import (
+    DailyMetricNotFoundError,
+    EmptyDailyMetricUpdateError,
+    MetricIdempotencyConflictError,
+    get_daily_metric,
+    list_daily_metrics,
+    set_daily_metric,
+)
 from job_search_core.schemas import (
     ApplicationCreate,
     ApplicationList,
     ApplicationRead,
+    DailyMetricList,
+    DailyMetricRead,
+    DailyMetricUpdate,
     ErrorDetail,
     VacancyCreate,
     VacancyList,
@@ -197,6 +209,63 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
         with persistence.session() as session:
             items = [ApplicationRead.model_validate(item) for item in list_applications(session)]
         return ApplicationList(items=items, total=len(items))
+
+    @application.put(
+        "/api/v1/metrics/{metric_date}",
+        response_model=DailyMetricRead,
+        status_code=status.HTTP_201_CREATED,
+        responses={400: {"model": ErrorDetail}, 409: {"model": ErrorDetail}},
+        tags=["metrics"],
+    )
+    def put_daily_metric(
+        metric_date: date,
+        request: DailyMetricUpdate,
+        response: Response,
+        idempotency_key: str = Header(min_length=1, max_length=255, alias="Idempotency-Key"),
+    ) -> DailyMetricRead | JSONResponse:
+        """Apply a partial dated snapshot once under an explicit retry key."""
+        try:
+            with persistence.session() as session:
+                result = set_daily_metric(session, metric_date, request, idempotency_key)
+                payload = DailyMetricRead.model_validate(result.metric)
+        except EmptyDailyMetricUpdateError:
+            return error_response(
+                "empty_metric_update", "At least one metric field is required", 400
+            )
+        except MetricIdempotencyConflictError:
+            return error_response(
+                "idempotency_conflict",
+                "Idempotency-Key was already used for a different request",
+                409,
+            )
+        response.status_code = 201 if result.created else 200
+        return payload
+
+    @application.get(
+        "/api/v1/metrics/{metric_date}",
+        response_model=DailyMetricRead,
+        responses={404: {"model": ErrorDetail}},
+        tags=["metrics"],
+    )
+    def get_metric(metric_date: date) -> DailyMetricRead | JSONResponse:
+        """Return one daily snapshot by its calendar date."""
+        try:
+            with persistence.session() as session:
+                return DailyMetricRead.model_validate(get_daily_metric(session, metric_date))
+        except DailyMetricNotFoundError:
+            return error_response("metric_not_found", "Daily metric does not exist", 404)
+
+    @application.get("/api/v1/metrics", response_model=DailyMetricList, tags=["metrics"])
+    def get_metrics(
+        since: date | None = None, limit: int = Query(default=60, ge=1, le=366)
+    ) -> DailyMetricList:
+        """List bounded daily snapshots newest first."""
+        with persistence.session() as session:
+            items = [
+                DailyMetricRead.model_validate(item)
+                for item in list_daily_metrics(session, since=since, limit=limit)
+            ]
+        return DailyMetricList(items=items, total=len(items))
 
     return application
 

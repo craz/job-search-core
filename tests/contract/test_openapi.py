@@ -36,3 +36,17 @@ def test_application_v1_contract_requires_idempotency_and_publishes_schemas() ->
     assert key["required"] is True
     assert "ApplicationCreate" in document["components"]["schemas"]
     assert "ApplicationRead" in document["components"]["schemas"]
+
+
+def test_daily_metric_v1_contract_publishes_dated_put_and_reads() -> None:
+    """Consumers discover bounded list/single reads and the mandatory write key."""
+    document = create_app().openapi()
+    collection = document["paths"]["/api/v1/metrics"]
+    dated = document["paths"]["/api/v1/metrics/{metric_date}"]
+
+    assert "get" in collection
+    assert {"get", "put"} <= dated.keys()
+    key = next(item for item in dated["put"]["parameters"] if item["name"] == "Idempotency-Key")
+    assert key["required"] is True
+    assert "DailyMetricUpdate" in document["components"]["schemas"]
+    assert "DailyMetricRead" in document["components"]["schemas"]

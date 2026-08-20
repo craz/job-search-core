@@ -88,3 +88,32 @@ def test_application_create_and_list_emit_versioned_json(
     assert created["command"] == "application.create"
     assert created["data"]["created"] is True
     assert listing["data"]["total"] == 1
+
+
+def test_metric_set_show_and_list_emit_versioned_json(capsys: CaptureFixture[str]) -> None:
+    """CLI automation can apply and retrieve a dated snapshot without prose."""
+    database = create_test_database()
+    set_args = [
+        "metric",
+        "set",
+        "--idempotency-key",
+        "cli-metric-key",
+        "--date",
+        "2026-08-20",
+        "--applications",
+        "3",
+        "--views-new",
+        "7",
+    ]
+
+    assert main(set_args, database=database) == 0
+    created = json.loads(capsys.readouterr().out)
+    assert main(["metric", "show", "--date", "2026-08-20"], database=database) == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert main(["metric", "list", "--since", "2026-08-20"], database=database) == 0
+    listing = json.loads(capsys.readouterr().out)
+
+    assert created["command"] == "metric.set"
+    assert created["data"]["created"] is True
+    assert shown["data"]["applications"] == 3
+    assert listing["data"]["total"] == 1

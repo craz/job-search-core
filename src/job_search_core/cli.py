@@ -7,6 +7,7 @@ import json
 import uuid
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
+from datetime import date
 
 import uvicorn
 
@@ -20,7 +21,22 @@ from job_search_core.applications import (
 )
 from job_search_core.config import Settings
 from job_search_core.database import Database
-from job_search_core.schemas import ApplicationCreate, ApplicationRead, VacancyCreate, VacancyRead
+from job_search_core.metrics import (
+    DailyMetricNotFoundError,
+    EmptyDailyMetricUpdateError,
+    MetricIdempotencyConflictError,
+    get_daily_metric,
+    list_daily_metrics,
+    set_daily_metric,
+)
+from job_search_core.schemas import (
+    ApplicationCreate,
+    ApplicationRead,
+    DailyMetricRead,
+    DailyMetricUpdate,
+    VacancyCreate,
+    VacancyRead,
+)
 from job_search_core.vacancies import (
     IdempotencyConflictError,
     VacancyAlreadyExistsError,
@@ -91,6 +107,27 @@ def build_parser() -> argparse.ArgumentParser:
     application_create.add_argument("--next-action")
     application_create.add_argument("--next-action-at")
     application_commands.add_parser("list", help="list persisted applications")
+
+    metric = subparsers.add_parser("metric", help="manage normalized daily metrics")
+    metric_commands = metric.add_subparsers(dest="metric_command", required=True)
+    metric_set = metric_commands.add_parser("set", help="idempotently apply a daily snapshot")
+    metric_set.add_argument("--idempotency-key", required=True)
+    metric_set.add_argument("--date", required=True)
+    for field in (
+        "views-total",
+        "views-new",
+        "applications",
+        "replies",
+        "invitations",
+        "rejections",
+    ):
+        metric_set.add_argument(f"--{field}", type=int)
+    metric_set.add_argument("--notes")
+    metric_show = metric_commands.add_parser("show", help="show one daily snapshot")
+    metric_show.add_argument("--date", required=True)
+    metric_list = metric_commands.add_parser("list", help="list daily snapshots")
+    metric_list.add_argument("--since")
+    metric_list.add_argument("--limit", type=int, default=60)
     return parser
 
 
@@ -175,6 +212,56 @@ def application_payload(args: argparse.Namespace, database: Database) -> tuple[E
     return envelope("application.create", data=data), 0
 
 
+def metric_payload(args: argparse.Namespace, database: Database) -> tuple[Envelope, int]:
+    """Execute one transactional Daily Metric command and return JSON output."""
+    if args.metric_command == "list":
+        since = date.fromisoformat(args.since) if args.since else None
+        with database.session() as session:
+            items = [
+                DailyMetricRead.model_validate(item).model_dump(mode="json")
+                for item in list_daily_metrics(session, since=since, limit=args.limit)
+            ]
+        return envelope("metric.list", data={"items": items, "total": len(items)}), 0
+    metric_date = date.fromisoformat(args.date)
+    if args.metric_command == "show":
+        try:
+            with database.session() as session:
+                data = DailyMetricRead.model_validate(
+                    get_daily_metric(session, metric_date)
+                ).model_dump(mode="json")
+        except DailyMetricNotFoundError:
+            error = {"code": "metric_not_found", "message": "daily metric does not exist"}
+            return envelope("metric.show", data={}, errors=[error]), 1
+        return envelope("metric.show", data=data), 0
+
+    values = {
+        field: getattr(args, field)
+        for field in (
+            "views_total",
+            "views_new",
+            "applications",
+            "replies",
+            "invitations",
+            "rejections",
+            "notes",
+        )
+        if getattr(args, field) is not None
+    }
+    request = DailyMetricUpdate.model_validate(values)
+    try:
+        with database.session() as session:
+            result = set_daily_metric(session, metric_date, request, args.idempotency_key)
+            data = DailyMetricRead.model_validate(result.metric).model_dump(mode="json")
+            data["created"] = result.created
+    except EmptyDailyMetricUpdateError:
+        error = {"code": "empty_metric_update", "message": "at least one field is required"}
+        return envelope("metric.set", data={}, errors=[error]), 1
+    except MetricIdempotencyConflictError:
+        error = {"code": "idempotency_conflict", "message": "key used for different request"}
+        return envelope("metric.set", data={}, errors=[error]), 1
+    return envelope("metric.set", data=data), 0
+
+
 def emit(payload: Envelope) -> None:
     """Write exactly one deterministic JSON document to standard output."""
     print(json.dumps(asdict(payload), ensure_ascii=False, sort_keys=True))
@@ -193,6 +280,10 @@ def main(argv: Sequence[str] | None = None, *, database: Database | None = None)
         return exit_code
     if args.command == "application":
         payload, exit_code = application_payload(args, database or Database(settings.database_url))
+        emit(payload)
+        return exit_code
+    if args.command == "metric":
+        payload, exit_code = metric_payload(args, database or Database(settings.database_url))
         emit(payload)
         return exit_code
 

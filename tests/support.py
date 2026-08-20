@@ -56,6 +56,10 @@ class ApiClient:
         """Send a JSON PATCH request."""
         return self.request("PATCH", path, json=json)
 
+    def put(self, path: str, *, json: dict[str, object], headers: dict[str, str]) -> httpx.Response:
+        """Send a JSON PUT request with explicit retry metadata."""
+        return self.request("PUT", path, json=json, headers=headers)
+
 
 def vacancy_payload(*, title: str = "Backend Engineer") -> dict[str, object]:
     """Return a public synthetic vacancy with no personal or provider credentials."""

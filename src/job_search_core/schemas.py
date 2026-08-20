@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -112,6 +112,42 @@ class ApplicationList(BaseModel):
     """Stable Application collection envelope with explicit total count."""
 
     items: list[ApplicationRead]
+    total: int
+
+
+class DailyMetricUpdate(BaseModel):
+    """Validated partial daily snapshot accepted from trusted consumers."""
+
+    views_total: int | None = Field(default=None, ge=0)
+    views_new: int | None = Field(default=None, ge=0)
+    applications: int | None = Field(default=None, ge=0)
+    replies: int | None = Field(default=None, ge=0)
+    invitations: int | None = Field(default=None, ge=0)
+    rejections: int | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class DailyMetricRead(BaseModel):
+    """Public persisted daily metric snapshot."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    metric_date: date
+    views_total: int | None
+    views_new: int | None
+    applications: int | None
+    replies: int | None
+    invitations: int | None
+    rejections: int | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DailyMetricList(BaseModel):
+    """Stable metric collection envelope ordered newest first."""
+
+    items: list[DailyMetricRead]
     total: int
 
 

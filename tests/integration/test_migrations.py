@@ -18,4 +18,11 @@ def test_migration_upgrades_an_empty_database(tmp_path: Path, monkeypatch: Monke
     command.upgrade(configuration, "head")
 
     tables = set(inspect(create_engine(database_url)).get_table_names())
-    assert {"alembic_version", "companies", "vacancies", "applications"} <= tables
+    assert {
+        "alembic_version",
+        "companies",
+        "vacancies",
+        "applications",
+        "daily_metrics",
+        "daily_metric_requests",
+    } <= tables
