@@ -8,7 +8,8 @@ contracts and never access its database directly.
 ## Current status
 
 Core owns PostgreSQL migrations and normalized Company, Vacancy, Application,
-Daily Metric, confirmed Person and Hypothesis persistence. Resource writes are idempotent,
+Daily Metric, confirmed Person, Hypothesis and normalized Assessment persistence.
+Resource writes are idempotent,
 database readiness is explicit, and machine-readable CLI operations mirror the
 public workflows.
 

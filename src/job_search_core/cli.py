@@ -19,6 +19,13 @@ from job_search_core.applications import (
     create_application,
     list_applications,
 )
+from job_search_core.assessments import (
+    AssessmentAlreadyExistsError,
+    AssessmentIdempotencyConflictError,
+    AssessmentVacancyNotFoundError,
+    create_assessment,
+    list_assessments,
+)
 from job_search_core.config import Settings
 from job_search_core.database import Database
 from job_search_core.hypotheses import (
@@ -53,6 +60,8 @@ from job_search_core.people import (
 from job_search_core.schemas import (
     ApplicationCreate,
     ApplicationRead,
+    AssessmentCreate,
+    AssessmentRead,
     DailyMetricRead,
     DailyMetricUpdate,
     HypothesisCreate,
@@ -192,6 +201,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hypothesis_close.add_argument("--hypothesis-id", required=True)
     hypothesis_close.add_argument("--result", required=True)
+    assessment = subparsers.add_parser("assessment", help="manage normalized scoring results")
+    assessment_commands = assessment.add_subparsers(dest="assessment_command", required=True)
+    assessment_create = assessment_commands.add_parser(
+        "create", help="idempotently create an assessment"
+    )
+    for name in (
+        "idempotency-key",
+        "vacancy-id",
+        "source",
+        "external-id",
+        "relevance-score",
+        "verdict",
+        "reason",
+        "action",
+        "model",
+        "prompt-version",
+        "assessed-at",
+    ):
+        assessment_create.add_argument(f"--{name}", required=True)
+    assessment_create.add_argument("--risk")
+    assessment_list = assessment_commands.add_parser("list", help="list assessments")
+    assessment_list.add_argument("--vacancy-id")
     return parser
 
 
@@ -430,6 +461,55 @@ def hypothesis_payload(args: argparse.Namespace, database: Database) -> tuple[En
     return envelope("hypothesis.create", data=data), 0
 
 
+def assessment_payload(args: argparse.Namespace, database: Database) -> tuple[Envelope, int]:
+    """Execute one normalized Assessment command and return JSON output."""
+    if args.assessment_command == "list":
+        vacancy_id = uuid.UUID(args.vacancy_id) if args.vacancy_id else None
+        with database.session() as session:
+            items = [
+                AssessmentRead.model_validate(item).model_dump(mode="json")
+                for item in list_assessments(session, vacancy_id)
+            ]
+        return envelope("assessment.list", data={"items": items, "total": len(items)}), 0
+    request = AssessmentCreate(
+        vacancy_id=args.vacancy_id,
+        source=args.source,
+        external_id=args.external_id,
+        relevance_score=int(args.relevance_score),
+        verdict=args.verdict,
+        reason=args.reason,
+        risk=args.risk,
+        action=args.action,
+        model=args.model,
+        prompt_version=args.prompt_version,
+        assessed_at=args.assessed_at,
+    )
+    try:
+        with database.session() as session:
+            result = create_assessment(session, request, args.idempotency_key)
+            data = AssessmentRead.model_validate(result.assessment).model_dump(mode="json")
+            data["created"] = result.created
+    except AssessmentIdempotencyConflictError:
+        return envelope(
+            "assessment.create",
+            data={},
+            errors=[{"code": "idempotency_conflict", "message": "key used for different request"}],
+        ), 1
+    except AssessmentAlreadyExistsError:
+        return envelope(
+            "assessment.create",
+            data={},
+            errors=[{"code": "assessment_exists", "message": "source assessment exists"}],
+        ), 1
+    except AssessmentVacancyNotFoundError:
+        return envelope(
+            "assessment.create",
+            data={},
+            errors=[{"code": "vacancy_not_found", "message": "vacancy does not exist"}],
+        ), 1
+    return envelope("assessment.create", data=data), 0
+
+
 def emit(payload: Envelope) -> None:
     """Write exactly one deterministic JSON document to standard output."""
     print(json.dumps(asdict(payload), ensure_ascii=False, sort_keys=True))
@@ -460,6 +540,10 @@ def main(argv: Sequence[str] | None = None, *, database: Database | None = None)
         return exit_code
     if args.command == "hypothesis":
         payload, exit_code = hypothesis_payload(args, database or Database(settings.database_url))
+        emit(payload)
+        return exit_code
+    if args.command == "assessment":
+        payload, exit_code = assessment_payload(args, database or Database(settings.database_url))
         emit(payload)
         return exit_code
 

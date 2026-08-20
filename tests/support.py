@@ -112,3 +112,20 @@ def person_payload(company_id: object, vacancy_id: object | None = None) -> dict
         "confidence": 0.9,
         "notes": "Synthetic confirmed contact.",
     }
+
+
+def assessment_payload(vacancy_id: object) -> dict[str, object]:
+    """Return one normalized synthetic scoring result without raw model output."""
+    return {
+        "vacancy_id": str(vacancy_id),
+        "source": "fixture",
+        "external_id": "assessment-100",
+        "relevance_score": 82,
+        "verdict": "apply",
+        "reason": "Strong synthetic match",
+        "risk": "Limited domain context",
+        "action": "Prepare a tailored application",
+        "model": "fixture-model",
+        "prompt_version": "fixture-v1",
+        "assessed_at": "2026-08-20T12:00:00Z",
+    }

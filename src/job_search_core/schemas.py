@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from job_search_core.models import (
     ApplicationResult,
+    AssessmentVerdict,
     HypothesisStatus,
     PersonRole,
     PersonStatus,
@@ -245,6 +246,49 @@ class HypothesisList(BaseModel):
     """Stable experiment collection envelope."""
 
     items: list[HypothesisRead]
+    total: int
+
+
+class AssessmentCreate(BaseModel):
+    """Validated normalized result accepted from a scoring producer."""
+
+    vacancy_id: uuid.UUID
+    source: str = Field(min_length=1, max_length=64)
+    external_id: str = Field(min_length=1, max_length=255)
+    relevance_score: int = Field(ge=0, le=100)
+    verdict: AssessmentVerdict
+    reason: str = Field(min_length=1, max_length=4000)
+    risk: str | None = Field(default=None, max_length=4000)
+    action: str = Field(min_length=1, max_length=1000)
+    model: str = Field(min_length=1, max_length=255)
+    prompt_version: str = Field(min_length=1, max_length=255)
+    assessed_at: datetime
+
+
+class AssessmentRead(BaseModel):
+    """Public normalized result with stable Vacancy identity."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source: str
+    external_id: str
+    relevance_score: int
+    verdict: AssessmentVerdict
+    reason: str
+    risk: str | None
+    action: str
+    model: str
+    prompt_version: str
+    assessed_at: datetime
+    created_at: datetime
+    vacancy: ApplicationVacancyRead
+
+
+class AssessmentList(BaseModel):
+    """Stable normalized Assessment collection envelope."""
+
+    items: list[AssessmentRead]
     total: int
 
 

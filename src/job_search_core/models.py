@@ -74,6 +74,14 @@ class HypothesisStatus(StrEnum):
     DONE = "done"
 
 
+class AssessmentVerdict(StrEnum):
+    """Controlled recommended actions produced by a scoring result."""
+
+    APPLY = "apply"
+    MAYBE = "maybe"
+    SKIP = "skip"
+
+
 class Company(Base):
     """Normalized employer identity referenced by vacancies."""
 
@@ -122,6 +130,7 @@ class Vacancy(Base):
     company: Mapped[Company] = relationship(back_populates="vacancies")
     applications: Mapped[list[Application]] = relationship(back_populates="vacancy")
     people: Mapped[list[Person]] = relationship(back_populates="vacancy")
+    assessments: Mapped[list[Assessment]] = relationship(back_populates="vacancy")
 
 
 class Application(Base):
@@ -277,3 +286,38 @@ class Hypothesis(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+
+
+class Assessment(Base):
+    """Normalized scoring result linked to one Core-owned Vacancy."""
+
+    __tablename__ = "assessments"
+    __table_args__ = (
+        UniqueConstraint("source", "external_id", name="uq_assessments_source_external_id"),
+        UniqueConstraint("idempotency_key", name="uq_assessments_idempotency_key"),
+        CheckConstraint(
+            "relevance_score >= 0 AND relevance_score <= 100",
+            name="ck_assessments_relevance_score",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    vacancy_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("vacancies.id", ondelete="RESTRICT"), index=True
+    )
+    source: Mapped[str] = mapped_column(String(64))
+    external_id: Mapped[str] = mapped_column(String(255))
+    relevance_score: Mapped[int] = mapped_column(Integer())
+    verdict: Mapped[AssessmentVerdict] = mapped_column(
+        Enum(AssessmentVerdict, name="assessment_verdict", native_enum=False)
+    )
+    reason: Mapped[str] = mapped_column(Text())
+    risk: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    action: Mapped[str] = mapped_column(String(1000))
+    model: Mapped[str] = mapped_column(String(255))
+    prompt_version: Mapped[str] = mapped_column(String(255))
+    assessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    request_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    vacancy: Mapped[Vacancy] = relationship(back_populates="assessments")

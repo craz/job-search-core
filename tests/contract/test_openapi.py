@@ -86,3 +86,13 @@ def test_hypothesis_v1_contract_requires_idempotency_and_explicit_close() -> Non
     assert key["required"] is True
     assert "HypothesisCreate" in document["components"]["schemas"]
     assert "HypothesisClose" in document["components"]["schemas"]
+
+
+def test_assessment_v1_contract_requires_idempotency_and_normalized_schema() -> None:
+    """Scoring producers discover normalized create/list and retry metadata."""
+    document = create_app().openapi()
+    path = document["paths"]["/api/v1/assessments"]
+    assert {"get", "post"} <= path.keys()
+    key = next(item for item in path["post"]["parameters"] if item["name"] == "Idempotency-Key")
+    assert key["required"] is True
+    assert "AssessmentCreate" in document["components"]["schemas"]

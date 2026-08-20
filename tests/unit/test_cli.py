@@ -215,3 +215,53 @@ def test_hypothesis_create_list_and_close_emit_versioned_json(
     assert created["command"] == "hypothesis.create"
     assert listing["data"]["total"] == 1
     assert closed["data"]["status"] == "done"
+
+
+def test_assessment_create_and_list_emit_versioned_json(capsys: CaptureFixture[str]) -> None:
+    """CLI stores one normalized scoring result without raw model output."""
+    database = create_test_database()
+    with database.session() as session:
+        company = Company(name="Score Labs", source="fixture", external_id="score-company")
+        vacancy = Vacancy(
+            company=company,
+            source="fixture",
+            external_id="score-vacancy",
+            title="Score Engineer",
+            url="https://example.com/score",
+            idempotency_key="score-vacancy-key",
+            request_fingerprint="fixture",
+        )
+        session.add(vacancy)
+        session.flush()
+        vacancy_id = str(vacancy.id)
+    args = [
+        "assessment",
+        "create",
+        "--idempotency-key",
+        "cli-assessment",
+        "--vacancy-id",
+        vacancy_id,
+        "--source",
+        "fixture",
+        "--external-id",
+        "assessment-cli",
+        "--relevance-score",
+        "82",
+        "--verdict",
+        "apply",
+        "--reason",
+        "Strong match",
+        "--action",
+        "Prepare application",
+        "--model",
+        "fixture-model",
+        "--prompt-version",
+        "v1",
+        "--assessed-at",
+        "2026-08-20T12:00:00Z",
+    ]
+    assert main(args, database=database) == 0
+    created = json.loads(capsys.readouterr().out)
+    assert main(["assessment", "list", "--vacancy-id", vacancy_id], database=database) == 0
+    listing = json.loads(capsys.readouterr().out)
+    assert created["command"] == "assessment.create" and listing["data"]["total"] == 1

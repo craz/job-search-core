@@ -27,4 +27,5 @@ def test_migration_upgrades_an_empty_database(tmp_path: Path, monkeypatch: Monke
         "daily_metric_requests",
         "people",
         "hypotheses",
+        "assessments",
     } <= tables

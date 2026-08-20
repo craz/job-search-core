@@ -24,6 +24,13 @@ from job_search_core.applications import (
     create_application,
     list_applications,
 )
+from job_search_core.assessments import (
+    AssessmentAlreadyExistsError,
+    AssessmentIdempotencyConflictError,
+    AssessmentVacancyNotFoundError,
+    create_assessment,
+    list_assessments,
+)
 from job_search_core.config import Settings
 from job_search_core.database import Database
 from job_search_core.hypotheses import (
@@ -59,6 +66,9 @@ from job_search_core.schemas import (
     ApplicationCreate,
     ApplicationList,
     ApplicationRead,
+    AssessmentCreate,
+    AssessmentList,
+    AssessmentRead,
     DailyMetricList,
     DailyMetricRead,
     DailyMetricUpdate,
@@ -422,6 +432,48 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
                 "Closed Hypothesis result cannot be replaced",
                 409,
             )
+
+    @application.post(
+        "/api/v1/assessments",
+        response_model=AssessmentRead,
+        status_code=status.HTTP_201_CREATED,
+        responses={404: {"model": ErrorDetail}, 409: {"model": ErrorDetail}},
+        tags=["assessments"],
+    )
+    def post_assessment(
+        request: AssessmentCreate,
+        response: Response,
+        idempotency_key: str = Header(min_length=1, max_length=255, alias="Idempotency-Key"),
+    ) -> AssessmentRead | JSONResponse:
+        """Persist one normalized scoring result without raw model output."""
+        try:
+            with persistence.session() as session:
+                result = create_assessment(session, request, idempotency_key)
+                payload = AssessmentRead.model_validate(result.assessment)
+        except AssessmentIdempotencyConflictError:
+            return error_response(
+                "idempotency_conflict",
+                "Idempotency-Key was already used for a different request",
+                409,
+            )
+        except AssessmentAlreadyExistsError:
+            return error_response(
+                "assessment_exists", "An Assessment with this identity exists", 409
+            )
+        except AssessmentVacancyNotFoundError:
+            return error_response("vacancy_not_found", "Vacancy does not exist", 404)
+        response.status_code = 201 if result.created else 200
+        return payload
+
+    @application.get("/api/v1/assessments", response_model=AssessmentList, tags=["assessments"])
+    def get_assessments(vacancy_id: uuid.UUID | None = None) -> AssessmentList:
+        """List normalized results newest first, optionally for one Vacancy."""
+        with persistence.session() as session:
+            items = [
+                AssessmentRead.model_validate(item)
+                for item in list_assessments(session, vacancy_id)
+            ]
+        return AssessmentList(items=items, total=len(items))
 
     return application
 
