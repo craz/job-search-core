@@ -50,3 +50,21 @@ def test_daily_metric_v1_contract_publishes_dated_put_and_reads() -> None:
     assert key["required"] is True
     assert "DailyMetricUpdate" in document["components"]["schemas"]
     assert "DailyMetricRead" in document["components"]["schemas"]
+
+
+def test_people_v1_contract_requires_idempotency_and_controlled_status() -> None:
+    """Consumers discover confirmed-contact create/list/status contracts."""
+    document = create_app().openapi()
+    collection = document["paths"]["/api/v1/people"]
+    item = document["paths"]["/api/v1/people/{person_id}"]
+
+    assert {"get", "post"} <= collection.keys()
+    assert "patch" in item
+    key = next(
+        parameter
+        for parameter in collection["post"]["parameters"]
+        if parameter["name"] == "Idempotency-Key"
+    )
+    assert key["required"] is True
+    assert "PersonCreate" in document["components"]["schemas"]
+    assert "PersonStatusUpdate" in document["components"]["schemas"]

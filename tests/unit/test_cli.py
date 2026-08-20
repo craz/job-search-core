@@ -117,3 +117,55 @@ def test_metric_set_show_and_list_emit_versioned_json(capsys: CaptureFixture[str
     assert created["data"]["created"] is True
     assert shown["data"]["applications"] == 3
     assert listing["data"]["total"] == 1
+
+
+def test_person_create_list_and_status_emit_versioned_json(
+    capsys: CaptureFixture[str],
+) -> None:
+    """CLI manages one confirmed contact using only JSON contracts."""
+    database = create_test_database()
+    with database.session() as session:
+        company = Company(name="People Labs", source="fixture", external_id="people-company")
+        session.add(company)
+        session.flush()
+        company_id = str(company.id)
+    create_args = [
+        "person",
+        "create",
+        "--idempotency-key",
+        "cli-person-key",
+        "--company-id",
+        company_id,
+        "--source",
+        "fixture",
+        "--external-id",
+        "cli-person",
+        "--full-name",
+        "Alex Example",
+        "--role",
+        "referral",
+    ]
+
+    assert main(create_args, database=database) == 0
+    created = json.loads(capsys.readouterr().out)
+    assert main(["person", "list"], database=database) == 0
+    listing = json.loads(capsys.readouterr().out)
+    assert (
+        main(
+            [
+                "person",
+                "set-status",
+                "--person-id",
+                created["data"]["id"],
+                "--status",
+                "contacted",
+            ],
+            database=database,
+        )
+        == 0
+    )
+    updated = json.loads(capsys.readouterr().out)
+
+    assert created["command"] == "person.create"
+    assert listing["data"]["total"] == 1
+    assert updated["data"]["status"] == "contacted"

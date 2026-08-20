@@ -15,4 +15,5 @@ Keep a Changelog and versions follow Semantic Versioning.
 - Controlled Vacancy status updates through `PATCH /api/v1/vacancies/{vacancy_id}`.
 - Application migration, idempotent create/list API and equivalent JSON CLI.
 - Daily Metric migration, replay-safe partial snapshots, dated/list API and JSON CLI.
+- Confirmed Person migration, idempotent create/list/status API and matching JSON CLI.
 - Database-aware readiness and an independent PostgreSQL 17 Compose stack.

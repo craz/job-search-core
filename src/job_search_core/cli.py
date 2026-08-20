@@ -29,11 +29,25 @@ from job_search_core.metrics import (
     list_daily_metrics,
     set_daily_metric,
 )
+from job_search_core.models import PersonStatus
+from job_search_core.people import (
+    PersonAlreadyExistsError,
+    PersonCompanyMismatchError,
+    PersonCompanyNotFoundError,
+    PersonIdempotencyConflictError,
+    PersonNotFoundError,
+    PersonVacancyNotFoundError,
+    create_person,
+    list_people,
+    update_person_status,
+)
 from job_search_core.schemas import (
     ApplicationCreate,
     ApplicationRead,
     DailyMetricRead,
     DailyMetricUpdate,
+    PersonCreate,
+    PersonRead,
     VacancyCreate,
     VacancyRead,
 )
@@ -128,6 +142,25 @@ def build_parser() -> argparse.ArgumentParser:
     metric_list = metric_commands.add_parser("list", help="list daily snapshots")
     metric_list.add_argument("--since")
     metric_list.add_argument("--limit", type=int, default=60)
+
+    person = subparsers.add_parser("person", help="manage confirmed professional contacts")
+    person_commands = person.add_subparsers(dest="person_command", required=True)
+    person_create = person_commands.add_parser("create", help="idempotently create a Person")
+    person_create.add_argument("--idempotency-key", required=True)
+    person_create.add_argument("--company-id", required=True)
+    person_create.add_argument("--vacancy-id")
+    person_create.add_argument("--source", required=True)
+    person_create.add_argument("--external-id", required=True)
+    person_create.add_argument("--full-name", required=True)
+    person_create.add_argument("--role", required=True)
+    person_create.add_argument("--title")
+    person_create.add_argument("--url")
+    person_create.add_argument("--confidence", type=float)
+    person_create.add_argument("--notes")
+    person_commands.add_parser("list", help="list confirmed contacts")
+    person_status = person_commands.add_parser("set-status", help="change contact status")
+    person_status.add_argument("--person-id", required=True)
+    person_status.add_argument("--status", required=True)
     return parser
 
 
@@ -262,6 +295,62 @@ def metric_payload(args: argparse.Namespace, database: Database) -> tuple[Envelo
     return envelope("metric.set", data=data), 0
 
 
+def person_payload(args: argparse.Namespace, database: Database) -> tuple[Envelope, int]:
+    """Execute one transactional Person command and return JSON output."""
+    if args.person_command == "list":
+        with database.session() as session:
+            items = [
+                PersonRead.model_validate(item).model_dump(mode="json")
+                for item in list_people(session)
+            ]
+        return envelope("person.list", data={"items": items, "total": len(items)}), 0
+    if args.person_command == "set-status":
+        try:
+            with database.session() as session:
+                data = PersonRead.model_validate(
+                    update_person_status(
+                        session, uuid.UUID(args.person_id), PersonStatus(args.status)
+                    )
+                ).model_dump(mode="json")
+        except PersonNotFoundError:
+            error = {"code": "person_not_found", "message": "person does not exist"}
+            return envelope("person.set-status", data={}, errors=[error]), 1
+        return envelope("person.set-status", data=data), 0
+    request = PersonCreate(
+        company_id=args.company_id,
+        vacancy_id=args.vacancy_id,
+        source=args.source,
+        external_id=args.external_id,
+        full_name=args.full_name,
+        role=args.role,
+        title=args.title,
+        url=args.url,
+        confidence=args.confidence,
+        notes=args.notes,
+    )
+    try:
+        with database.session() as session:
+            result = create_person(session, request, args.idempotency_key)
+            data = PersonRead.model_validate(result.person).model_dump(mode="json")
+            data["created"] = result.created
+    except PersonIdempotencyConflictError:
+        error = {"code": "idempotency_conflict", "message": "key used for different request"}
+        return envelope("person.create", data={}, errors=[error]), 1
+    except PersonAlreadyExistsError:
+        error = {"code": "person_exists", "message": "source Person already exists"}
+        return envelope("person.create", data={}, errors=[error]), 1
+    except PersonCompanyNotFoundError:
+        error = {"code": "company_not_found", "message": "company does not exist"}
+        return envelope("person.create", data={}, errors=[error]), 1
+    except PersonVacancyNotFoundError:
+        error = {"code": "vacancy_not_found", "message": "vacancy does not exist"}
+        return envelope("person.create", data={}, errors=[error]), 1
+    except PersonCompanyMismatchError:
+        error = {"code": "person_company_mismatch", "message": "vacancy company differs"}
+        return envelope("person.create", data={}, errors=[error]), 1
+    return envelope("person.create", data=data), 0
+
+
 def emit(payload: Envelope) -> None:
     """Write exactly one deterministic JSON document to standard output."""
     print(json.dumps(asdict(payload), ensure_ascii=False, sort_keys=True))
@@ -284,6 +373,10 @@ def main(argv: Sequence[str] | None = None, *, database: Database | None = None)
         return exit_code
     if args.command == "metric":
         payload, exit_code = metric_payload(args, database or Database(settings.database_url))
+        emit(payload)
+        return exit_code
+    if args.command == "person":
+        payload, exit_code = person_payload(args, database or Database(settings.database_url))
         emit(payload)
         return exit_code
 

@@ -48,6 +48,25 @@ class ApplicationResult(StrEnum):
     OFFER = "offer"
 
 
+class PersonRole(StrEnum):
+    """Controlled professional relationship roles for confirmed contacts."""
+
+    HIRING_MANAGER = "hiring_manager"
+    RECRUITER = "recruiter"
+    REFERRAL = "referral"
+    PEER = "peer"
+
+
+class PersonStatus(StrEnum):
+    """Controlled contact-workflow states without implying external delivery."""
+
+    NEW = "new"
+    RESEARCHING = "researching"
+    CONTACTED = "contacted"
+    REPLIED = "replied"
+    DROPPED = "dropped"
+
+
 class Company(Base):
     """Normalized employer identity referenced by vacancies."""
 
@@ -62,6 +81,7 @@ class Company(Base):
     external_id: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     vacancies: Mapped[list[Vacancy]] = relationship(back_populates="company")
+    people: Mapped[list[Person]] = relationship(back_populates="company")
 
 
 class Vacancy(Base):
@@ -94,6 +114,7 @@ class Vacancy(Base):
     )
     company: Mapped[Company] = relationship(back_populates="vacancies")
     applications: Mapped[list[Application]] = relationship(back_populates="vacancy")
+    people: Mapped[list[Person]] = relationship(back_populates="vacancy")
 
 
 class Application(Base):
@@ -173,3 +194,49 @@ class DailyMetricRequest(Base):
     idempotency_key: Mapped[str] = mapped_column(String(255))
     request_fingerprint: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class Person(Base):
+    """Confirmed professional contact linked to a Core Company and optional Vacancy."""
+
+    __tablename__ = "people"
+    __table_args__ = (
+        UniqueConstraint("source", "external_id", name="uq_people_source_external_id"),
+        UniqueConstraint("idempotency_key", name="uq_people_idempotency_key"),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
+            name="ck_people_confidence",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("companies.id", ondelete="RESTRICT"), index=True
+    )
+    vacancy_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("vacancies.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(64))
+    external_id: Mapped[str] = mapped_column(String(255))
+    full_name: Mapped[str] = mapped_column(String(255))
+    role: Mapped[PersonRole] = mapped_column(
+        Enum(PersonRole, name="person_role", native_enum=False)
+    )
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    confidence: Mapped[float | None] = mapped_column(nullable=True)
+    status: Mapped[PersonStatus] = mapped_column(
+        Enum(PersonStatus, name="person_status", native_enum=False), default=PersonStatus.NEW
+    )
+    notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    request_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    company: Mapped[Company] = relationship(back_populates="people")
+    vacancy: Mapped[Vacancy | None] = relationship(back_populates="people")

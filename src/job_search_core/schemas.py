@@ -7,7 +7,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
-from job_search_core.models import ApplicationResult, VacancyStatus
+from job_search_core.models import ApplicationResult, PersonRole, PersonStatus, VacancyStatus
 
 
 class VacancyCreate(BaseModel):
@@ -148,6 +148,55 @@ class DailyMetricList(BaseModel):
     """Stable metric collection envelope ordered newest first."""
 
     items: list[DailyMetricRead]
+    total: int
+
+
+class PersonCreate(BaseModel):
+    """Validated confirmed contact accepted from trusted consumers."""
+
+    company_id: uuid.UUID
+    vacancy_id: uuid.UUID | None = None
+    source: str = Field(min_length=1, max_length=64)
+    external_id: str = Field(min_length=1, max_length=255)
+    full_name: str = Field(min_length=1, max_length=255)
+    role: PersonRole
+    title: str | None = Field(default=None, max_length=500)
+    url: HttpUrl | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class PersonStatusUpdate(BaseModel):
+    """Controlled contact workflow transition requested by a consumer."""
+
+    status: PersonStatus
+
+
+class PersonRead(BaseModel):
+    """Public confirmed contact with stable Company and Vacancy identity."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source: str
+    external_id: str
+    full_name: str
+    role: PersonRole
+    title: str | None
+    url: str | None
+    confidence: float | None
+    status: PersonStatus
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+    company: CompanyRead
+    vacancy: ApplicationVacancyRead | None
+
+
+class PersonList(BaseModel):
+    """Stable confirmed-contact collection envelope."""
+
+    items: list[PersonRead]
     total: int
 
 

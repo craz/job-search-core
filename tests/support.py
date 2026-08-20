@@ -96,3 +96,19 @@ def application_payload(vacancy_id: object) -> dict[str, object]:
         "next_action": "Review synthetic reply",
         "next_action_at": "2026-08-20T09:30:00Z",
     }
+
+
+def person_payload(company_id: object, vacancy_id: object | None = None) -> dict[str, object]:
+    """Return one confirmed synthetic Person without private contact details."""
+    return {
+        "company_id": str(company_id),
+        "vacancy_id": str(vacancy_id) if vacancy_id else None,
+        "source": "fixture",
+        "external_id": "person-100",
+        "full_name": "Alex Example",
+        "role": "referral",
+        "title": "Senior Engineer",
+        "url": "https://example.com/people/alex-example",
+        "confidence": 0.9,
+        "notes": "Synthetic confirmed contact.",
+    }

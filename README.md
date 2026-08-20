@@ -7,9 +7,10 @@ contracts and never access its database directly.
 
 ## Current status
 
-Core owns PostgreSQL migrations and normalized Company, Vacancy, Application and
-Daily Metric persistence. Resource writes are idempotent, database readiness is
-explicit, and machine-readable CLI operations mirror the public workflows.
+Core owns PostgreSQL migrations and normalized Company, Vacancy, Application,
+Daily Metric and confirmed Person persistence. Resource writes are idempotent,
+database readiness is explicit, and machine-readable CLI operations mirror the
+public workflows.
 
 ## Quick start
 
@@ -54,15 +55,19 @@ package-manager image registry.
 - `GET /api/v1/applications` — list Applications with their Vacancy identity.
 - `PUT /api/v1/metrics/{date}` — replay-safe partial dated snapshot.
 - `GET /api/v1/metrics/{date}` and `GET /api/v1/metrics` — read metric history.
+- `POST/GET /api/v1/people` — create/list confirmed contacts.
+- `PATCH /api/v1/people/{person_id}` — change local contact workflow status.
 - `job-search-core info` — one versioned JSON envelope on stdout.
 - `job-search-core vacancy create|list` — matching JSON CLI workflow.
 - `job-search-core application create|list` — matching Application JSON CLI.
 - `job-search-core metric set|show|list` — matching Daily Metric JSON CLI.
+- `job-search-core person create|list|set-status` — matching Person JSON CLI.
 
 See the [platform](docs/specs/core-platform.md),
 [Vacancy](docs/specs/vacancy-management.md) and
 [Application](docs/specs/application-management.md) and
-[Daily Metrics](docs/specs/daily-metrics.md) feature specifications.
+[Daily Metrics](docs/specs/daily-metrics.md) and
+[People](docs/specs/people-management.md) feature specifications.
 
 ## Architecture boundaries
 

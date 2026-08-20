@@ -34,6 +34,17 @@ from job_search_core.metrics import (
     list_daily_metrics,
     set_daily_metric,
 )
+from job_search_core.people import (
+    PersonAlreadyExistsError,
+    PersonCompanyMismatchError,
+    PersonCompanyNotFoundError,
+    PersonIdempotencyConflictError,
+    PersonNotFoundError,
+    PersonVacancyNotFoundError,
+    create_person,
+    list_people,
+    update_person_status,
+)
 from job_search_core.schemas import (
     ApplicationCreate,
     ApplicationList,
@@ -42,6 +53,10 @@ from job_search_core.schemas import (
     DailyMetricRead,
     DailyMetricUpdate,
     ErrorDetail,
+    PersonCreate,
+    PersonList,
+    PersonRead,
+    PersonStatusUpdate,
     VacancyCreate,
     VacancyList,
     VacancyRead,
@@ -266,6 +281,67 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
                 for item in list_daily_metrics(session, since=since, limit=limit)
             ]
         return DailyMetricList(items=items, total=len(items))
+
+    @application.post(
+        "/api/v1/people",
+        response_model=PersonRead,
+        status_code=status.HTTP_201_CREATED,
+        responses={404: {"model": ErrorDetail}, 409: {"model": ErrorDetail}},
+        tags=["people"],
+    )
+    def post_person(
+        request: PersonCreate,
+        response: Response,
+        idempotency_key: str = Header(min_length=1, max_length=255, alias="Idempotency-Key"),
+    ) -> PersonRead | JSONResponse:
+        """Persist one confirmed contact without running OSINT or messaging."""
+        try:
+            with persistence.session() as session:
+                result = create_person(session, request, idempotency_key)
+                payload = PersonRead.model_validate(result.person)
+        except PersonIdempotencyConflictError:
+            return error_response(
+                "idempotency_conflict",
+                "Idempotency-Key was already used for a different request",
+                409,
+            )
+        except PersonAlreadyExistsError:
+            return error_response("person_exists", "A Person with this identity exists", 409)
+        except PersonCompanyNotFoundError:
+            return error_response("company_not_found", "Company does not exist", 404)
+        except PersonVacancyNotFoundError:
+            return error_response("vacancy_not_found", "Vacancy does not exist", 404)
+        except PersonCompanyMismatchError:
+            return error_response(
+                "person_company_mismatch", "Vacancy belongs to another Company", 409
+            )
+        response.status_code = 201 if result.created else 200
+        return payload
+
+    @application.get("/api/v1/people", response_model=PersonList, tags=["people"])
+    def get_people() -> PersonList:
+        """List confirmed contacts without exposing raw OSINT provider data."""
+        with persistence.session() as session:
+            items = [PersonRead.model_validate(item) for item in list_people(session)]
+        return PersonList(items=items, total=len(items))
+
+    @application.patch(
+        "/api/v1/people/{person_id}",
+        response_model=PersonRead,
+        responses={404: {"model": ErrorDetail}},
+        tags=["people"],
+    )
+    def patch_person_status(
+        person_id: uuid.UUID, request: PersonStatusUpdate
+    ) -> PersonRead | JSONResponse:
+        """Change local contact workflow state without sending any message."""
+        try:
+            with persistence.session() as session:
+                return PersonRead.model_validate(
+                    update_person_status(session, person_id, request.status)
+                )
+        except PersonNotFoundError:
+            return error_response("person_not_found", "Person does not exist", 404)
 
     return application
 
