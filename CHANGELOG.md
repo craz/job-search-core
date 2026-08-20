@@ -16,4 +16,5 @@ Keep a Changelog and versions follow Semantic Versioning.
 - Application migration, idempotent create/list API and equivalent JSON CLI.
 - Daily Metric migration, replay-safe partial snapshots, dated/list API and JSON CLI.
 - Confirmed Person migration, idempotent create/list/status API and matching JSON CLI.
+- Hypothesis migration, replay-safe create/list and immutable close-result API/JSON CLI.
 - Database-aware readiness and an independent PostgreSQL 17 Compose stack.

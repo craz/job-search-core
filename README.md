@@ -8,7 +8,7 @@ contracts and never access its database directly.
 ## Current status
 
 Core owns PostgreSQL migrations and normalized Company, Vacancy, Application,
-Daily Metric and confirmed Person persistence. Resource writes are idempotent,
+Daily Metric, confirmed Person and Hypothesis persistence. Resource writes are idempotent,
 database readiness is explicit, and machine-readable CLI operations mirror the
 public workflows.
 
@@ -48,6 +48,8 @@ package-manager image registry.
 
 - `GET /health/live` — process liveness without dependency checks.
 - `GET /health/ready` — database-backed readiness.
+- `POST/GET /api/v1/hypotheses` and `POST /api/v1/hypotheses/{id}/close` —
+  measurable search experiments and immutable observed results.
 - `POST /api/v1/vacancies` — create with mandatory `Idempotency-Key`.
 - `GET /api/v1/vacancies` — list normalized vacancies and companies.
 - `PATCH /api/v1/vacancies/{vacancy_id}` — change the controlled funnel status.

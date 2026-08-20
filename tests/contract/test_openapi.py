@@ -68,3 +68,21 @@ def test_people_v1_contract_requires_idempotency_and_controlled_status() -> None
     assert key["required"] is True
     assert "PersonCreate" in document["components"]["schemas"]
     assert "PersonStatusUpdate" in document["components"]["schemas"]
+
+
+def test_hypothesis_v1_contract_requires_idempotency_and_explicit_close() -> None:
+    """Consumers discover experiment create/list/filter and result-bearing close."""
+    document = create_app().openapi()
+    collection = document["paths"]["/api/v1/hypotheses"]
+    close = document["paths"]["/api/v1/hypotheses/{hypothesis_id}/close"]
+
+    assert {"get", "post"} <= collection.keys()
+    assert "post" in close
+    key = next(
+        parameter
+        for parameter in collection["post"]["parameters"]
+        if parameter["name"] == "Idempotency-Key"
+    )
+    assert key["required"] is True
+    assert "HypothesisCreate" in document["components"]["schemas"]
+    assert "HypothesisClose" in document["components"]["schemas"]

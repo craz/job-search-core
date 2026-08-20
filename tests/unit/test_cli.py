@@ -169,3 +169,49 @@ def test_person_create_list_and_status_emit_versioned_json(
     assert created["command"] == "person.create"
     assert listing["data"]["total"] == 1
     assert updated["data"]["status"] == "contacted"
+
+
+def test_hypothesis_create_list_and_close_emit_versioned_json(
+    capsys: CaptureFixture[str],
+) -> None:
+    """CLI manages one measurable experiment using only JSON contracts."""
+    database = create_test_database()
+    create_args = [
+        "hypothesis",
+        "create",
+        "--idempotency-key",
+        "cli-hypothesis-key",
+        "--source",
+        "fixture",
+        "--external-id",
+        "cli-hypothesis",
+        "--title",
+        "Focused applications improve replies",
+        "--test-size",
+        "10",
+        "--metric",
+        "reply_rate",
+    ]
+    assert main(create_args, database=database) == 0
+    created = json.loads(capsys.readouterr().out)
+    assert main(["hypothesis", "list", "--status", "active"], database=database) == 0
+    listing = json.loads(capsys.readouterr().out)
+    assert (
+        main(
+            [
+                "hypothesis",
+                "close",
+                "--hypothesis-id",
+                created["data"]["id"],
+                "--result",
+                "Reply rate improved",
+            ],
+            database=database,
+        )
+        == 0
+    )
+    closed = json.loads(capsys.readouterr().out)
+
+    assert created["command"] == "hypothesis.create"
+    assert listing["data"]["total"] == 1
+    assert closed["data"]["status"] == "done"

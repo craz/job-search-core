@@ -67,6 +67,13 @@ class PersonStatus(StrEnum):
     DROPPED = "dropped"
 
 
+class HypothesisStatus(StrEnum):
+    """Controlled lifecycle states for a job-search experiment."""
+
+    ACTIVE = "active"
+    DONE = "done"
+
+
 class Company(Base):
     """Normalized employer identity referenced by vacancies."""
 
@@ -240,3 +247,33 @@ class Person(Base):
     )
     company: Mapped[Company] = relationship(back_populates="people")
     vacancy: Mapped[Vacancy | None] = relationship(back_populates="people")
+
+
+class Hypothesis(Base):
+    """Measurable job-search experiment with an explicit closing result."""
+
+    __tablename__ = "hypotheses"
+    __table_args__ = (
+        UniqueConstraint("source", "external_id", name="uq_hypotheses_source_external_id"),
+        UniqueConstraint("idempotency_key", name="uq_hypotheses_idempotency_key"),
+        CheckConstraint("test_size IS NULL OR test_size > 0", name="ck_hypotheses_test_size"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source: Mapped[str] = mapped_column(String(64))
+    external_id: Mapped[str] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(String(500))
+    description: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    test_size: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    metric: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[HypothesisStatus] = mapped_column(
+        Enum(HypothesisStatus, name="hypothesis_status", native_enum=False),
+        default=HypothesisStatus.ACTIVE,
+    )
+    result: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    request_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )

@@ -7,7 +7,13 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
-from job_search_core.models import ApplicationResult, PersonRole, PersonStatus, VacancyStatus
+from job_search_core.models import (
+    ApplicationResult,
+    HypothesisStatus,
+    PersonRole,
+    PersonStatus,
+    VacancyStatus,
+)
 
 
 class VacancyCreate(BaseModel):
@@ -197,6 +203,48 @@ class PersonList(BaseModel):
     """Stable confirmed-contact collection envelope."""
 
     items: list[PersonRead]
+    total: int
+
+
+class HypothesisCreate(BaseModel):
+    """Validated measurable experiment accepted from trusted consumers."""
+
+    source: str = Field(min_length=1, max_length=64)
+    external_id: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(default=None, max_length=4000)
+    test_size: int | None = Field(default=None, gt=0)
+    metric: str | None = Field(default=None, max_length=500)
+
+
+class HypothesisClose(BaseModel):
+    """Explicit observed result required to close an active experiment."""
+
+    result: str = Field(min_length=1, max_length=4000)
+
+
+class HypothesisRead(BaseModel):
+    """Public persisted experiment and its lifecycle state."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source: str
+    external_id: str
+    title: str
+    description: str | None
+    test_size: int | None
+    metric: str | None
+    status: HypothesisStatus
+    result: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class HypothesisList(BaseModel):
+    """Stable experiment collection envelope."""
+
+    items: list[HypothesisRead]
     total: int
 
 

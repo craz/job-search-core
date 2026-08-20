@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from typing import Final
+from typing import Annotated, Final
 
 from fastapi import FastAPI, Header, Query, Response, status
 from fastapi.responses import JSONResponse
@@ -26,6 +26,15 @@ from job_search_core.applications import (
 )
 from job_search_core.config import Settings
 from job_search_core.database import Database
+from job_search_core.hypotheses import (
+    HypothesisAlreadyClosedError,
+    HypothesisAlreadyExistsError,
+    HypothesisIdempotencyConflictError,
+    HypothesisNotFoundError,
+    close_hypothesis,
+    create_hypothesis,
+    list_hypotheses,
+)
 from job_search_core.metrics import (
     DailyMetricNotFoundError,
     EmptyDailyMetricUpdateError,
@@ -34,6 +43,7 @@ from job_search_core.metrics import (
     list_daily_metrics,
     set_daily_metric,
 )
+from job_search_core.models import HypothesisStatus
 from job_search_core.people import (
     PersonAlreadyExistsError,
     PersonCompanyMismatchError,
@@ -53,6 +63,10 @@ from job_search_core.schemas import (
     DailyMetricRead,
     DailyMetricUpdate,
     ErrorDetail,
+    HypothesisClose,
+    HypothesisCreate,
+    HypothesisList,
+    HypothesisRead,
     PersonCreate,
     PersonList,
     PersonRead,
@@ -342,6 +356,72 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
                 )
         except PersonNotFoundError:
             return error_response("person_not_found", "Person does not exist", 404)
+
+    @application.post(
+        "/api/v1/hypotheses",
+        response_model=HypothesisRead,
+        status_code=status.HTTP_201_CREATED,
+        responses={409: {"model": ErrorDetail}},
+        tags=["hypotheses"],
+    )
+    def post_hypothesis(
+        request: HypothesisCreate,
+        response: Response,
+        idempotency_key: str = Header(min_length=1, max_length=255, alias="Idempotency-Key"),
+    ) -> HypothesisRead | JSONResponse:
+        """Persist one measurable active experiment under explicit retry metadata."""
+        try:
+            with persistence.session() as session:
+                result = create_hypothesis(session, request, idempotency_key)
+                payload = HypothesisRead.model_validate(result.hypothesis)
+        except HypothesisIdempotencyConflictError:
+            return error_response(
+                "idempotency_conflict",
+                "Idempotency-Key was already used for a different request",
+                409,
+            )
+        except HypothesisAlreadyExistsError:
+            return error_response(
+                "hypothesis_exists", "A Hypothesis with this identity exists", 409
+            )
+        response.status_code = 201 if result.created else 200
+        return payload
+
+    @application.get("/api/v1/hypotheses", response_model=HypothesisList, tags=["hypotheses"])
+    def get_hypotheses(
+        status_filter: Annotated[HypothesisStatus | None, Query(alias="status")] = None,
+    ) -> HypothesisList:
+        """List experiments newest first with an optional lifecycle filter."""
+        with persistence.session() as session:
+            items = [
+                HypothesisRead.model_validate(item)
+                for item in list_hypotheses(session, status_filter)
+            ]
+        return HypothesisList(items=items, total=len(items))
+
+    @application.post(
+        "/api/v1/hypotheses/{hypothesis_id}/close",
+        response_model=HypothesisRead,
+        responses={404: {"model": ErrorDetail}, 409: {"model": ErrorDetail}},
+        tags=["hypotheses"],
+    )
+    def post_hypothesis_close(
+        hypothesis_id: uuid.UUID, request: HypothesisClose
+    ) -> HypothesisRead | JSONResponse:
+        """Close an active experiment with its first observed result."""
+        try:
+            with persistence.session() as session:
+                return HypothesisRead.model_validate(
+                    close_hypothesis(session, hypothesis_id, request.result)
+                )
+        except HypothesisNotFoundError:
+            return error_response("hypothesis_not_found", "Hypothesis does not exist", 404)
+        except HypothesisAlreadyClosedError:
+            return error_response(
+                "hypothesis_already_closed",
+                "Closed Hypothesis result cannot be replaced",
+                409,
+            )
 
     return application
 

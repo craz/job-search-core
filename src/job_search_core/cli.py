@@ -21,6 +21,15 @@ from job_search_core.applications import (
 )
 from job_search_core.config import Settings
 from job_search_core.database import Database
+from job_search_core.hypotheses import (
+    HypothesisAlreadyClosedError,
+    HypothesisAlreadyExistsError,
+    HypothesisIdempotencyConflictError,
+    HypothesisNotFoundError,
+    close_hypothesis,
+    create_hypothesis,
+    list_hypotheses,
+)
 from job_search_core.metrics import (
     DailyMetricNotFoundError,
     EmptyDailyMetricUpdateError,
@@ -29,7 +38,7 @@ from job_search_core.metrics import (
     list_daily_metrics,
     set_daily_metric,
 )
-from job_search_core.models import PersonStatus
+from job_search_core.models import HypothesisStatus, PersonStatus
 from job_search_core.people import (
     PersonAlreadyExistsError,
     PersonCompanyMismatchError,
@@ -46,6 +55,8 @@ from job_search_core.schemas import (
     ApplicationRead,
     DailyMetricRead,
     DailyMetricUpdate,
+    HypothesisCreate,
+    HypothesisRead,
     PersonCreate,
     PersonRead,
     VacancyCreate,
@@ -161,6 +172,26 @@ def build_parser() -> argparse.ArgumentParser:
     person_status = person_commands.add_parser("set-status", help="change contact status")
     person_status.add_argument("--person-id", required=True)
     person_status.add_argument("--status", required=True)
+
+    hypothesis = subparsers.add_parser("hypothesis", help="manage search experiments")
+    hypothesis_commands = hypothesis.add_subparsers(dest="hypothesis_command", required=True)
+    hypothesis_create = hypothesis_commands.add_parser(
+        "create", help="idempotently create an active hypothesis"
+    )
+    hypothesis_create.add_argument("--idempotency-key", required=True)
+    hypothesis_create.add_argument("--source", required=True)
+    hypothesis_create.add_argument("--external-id", required=True)
+    hypothesis_create.add_argument("--title", required=True)
+    hypothesis_create.add_argument("--description")
+    hypothesis_create.add_argument("--test-size", type=int)
+    hypothesis_create.add_argument("--metric")
+    hypothesis_list = hypothesis_commands.add_parser("list", help="list hypotheses")
+    hypothesis_list.add_argument("--status", choices=[item.value for item in HypothesisStatus])
+    hypothesis_close = hypothesis_commands.add_parser(
+        "close", help="close an active hypothesis with an observed result"
+    )
+    hypothesis_close.add_argument("--hypothesis-id", required=True)
+    hypothesis_close.add_argument("--result", required=True)
     return parser
 
 
@@ -351,6 +382,54 @@ def person_payload(args: argparse.Namespace, database: Database) -> tuple[Envelo
     return envelope("person.create", data=data), 0
 
 
+def hypothesis_payload(args: argparse.Namespace, database: Database) -> tuple[Envelope, int]:
+    """Execute one transactional Hypothesis command and return JSON output."""
+    if args.hypothesis_command == "list":
+        status = HypothesisStatus(args.status) if args.status else None
+        with database.session() as session:
+            items = [
+                HypothesisRead.model_validate(item).model_dump(mode="json")
+                for item in list_hypotheses(session, status)
+            ]
+        return envelope("hypothesis.list", data={"items": items, "total": len(items)}), 0
+    if args.hypothesis_command == "close":
+        try:
+            with database.session() as session:
+                data = HypothesisRead.model_validate(
+                    close_hypothesis(session, uuid.UUID(args.hypothesis_id), args.result)
+                ).model_dump(mode="json")
+        except HypothesisNotFoundError:
+            error = {"code": "hypothesis_not_found", "message": "hypothesis does not exist"}
+            return envelope("hypothesis.close", data={}, errors=[error]), 1
+        except HypothesisAlreadyClosedError:
+            error = {
+                "code": "hypothesis_already_closed",
+                "message": "closed result cannot be replaced",
+            }
+            return envelope("hypothesis.close", data={}, errors=[error]), 1
+        return envelope("hypothesis.close", data=data), 0
+    request = HypothesisCreate(
+        source=args.source,
+        external_id=args.external_id,
+        title=args.title,
+        description=args.description,
+        test_size=args.test_size,
+        metric=args.metric,
+    )
+    try:
+        with database.session() as session:
+            result = create_hypothesis(session, request, args.idempotency_key)
+            data = HypothesisRead.model_validate(result.hypothesis).model_dump(mode="json")
+            data["created"] = result.created
+    except HypothesisIdempotencyConflictError:
+        error = {"code": "idempotency_conflict", "message": "key used for different request"}
+        return envelope("hypothesis.create", data={}, errors=[error]), 1
+    except HypothesisAlreadyExistsError:
+        error = {"code": "hypothesis_exists", "message": "source hypothesis exists"}
+        return envelope("hypothesis.create", data={}, errors=[error]), 1
+    return envelope("hypothesis.create", data=data), 0
+
+
 def emit(payload: Envelope) -> None:
     """Write exactly one deterministic JSON document to standard output."""
     print(json.dumps(asdict(payload), ensure_ascii=False, sort_keys=True))
@@ -377,6 +456,10 @@ def main(argv: Sequence[str] | None = None, *, database: Database | None = None)
         return exit_code
     if args.command == "person":
         payload, exit_code = person_payload(args, database or Database(settings.database_url))
+        emit(payload)
+        return exit_code
+    if args.command == "hypothesis":
+        payload, exit_code = hypothesis_payload(args, database or Database(settings.database_url))
         emit(payload)
         return exit_code
 
