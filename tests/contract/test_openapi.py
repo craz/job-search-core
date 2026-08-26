@@ -98,3 +98,12 @@ def test_assessment_v1_contract_requires_idempotency_and_normalized_schema() -> 
     key = next(item for item in path["post"]["parameters"] if item["name"] == "Idempotency-Key")
     assert key["required"] is True
     assert "AssessmentCreate" in document["components"]["schemas"]
+
+
+def test_candidate_context_v1_contract_publishes_get_and_hh_link_put() -> None:
+    """Consumers discover R1.5 candidate context and HH resume linkage."""
+    document = create_app().openapi()
+    assert "get" in document["paths"]["/api/v1/candidate-context"]
+    assert "put" in document["paths"]["/api/v1/candidate-context/hh-resume-link"]
+    assert "CandidateContextRead" in document["components"]["schemas"]
+    assert "HhResumeLinkUpdate" in document["components"]["schemas"]

@@ -28,4 +28,7 @@ def test_migration_upgrades_an_empty_database(tmp_path: Path, monkeypatch: Monke
         "people",
         "hypotheses",
         "assessments",
+        "candidate_profiles",
+        "profile_versions",
+        "active_hh_resume_links",
     } <= tables

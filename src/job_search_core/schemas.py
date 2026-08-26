@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 from job_search_core.models import (
     ApplicationResult,
     AssessmentVerdict,
+    HhResumeLinkStatus,
     HypothesisStatus,
     PersonRole,
     PersonStatus,
@@ -297,6 +298,54 @@ class AssessmentList(BaseModel):
 
     items: list[AssessmentRead]
     total: int
+
+
+class HhResumeLinkUpdate(BaseModel):
+    """Set or clear the local HH resume link on the operator ProfileVersion."""
+
+    external_resume_id: str | None
+    title: str | None = None
+    status: HhResumeLinkStatus | None = None
+
+
+class CandidateProfileRead(BaseModel):
+    """Public single-operator CandidateProfile identity."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    created_at: datetime
+
+
+class ProfileVersionRead(BaseModel):
+    """Public ProfileVersion used as HH linkage target."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    label: str
+    created_at: datetime
+
+
+class HhResumeLinkRead(BaseModel):
+    """Public ActiveHhResumeLink (source=hh)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    source: str
+    external_resume_id: str | None
+    title: str | None
+    selected_at: datetime | None
+    status: HhResumeLinkStatus
+    updated_at: datetime
+
+
+class CandidateContextRead(BaseModel):
+    """Operator candidate context: profile, version, and optional HH resume link."""
+
+    candidate_profile: CandidateProfileRead | None
+    profile_version: ProfileVersionRead | None
+    hh_resume_link: HhResumeLinkRead | None
 
 
 class ErrorDetail(BaseModel):

@@ -322,3 +322,79 @@ class Assessment(Base):
     request_fingerprint: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     vacancy: Mapped[Vacancy] = relationship(back_populates="assessments")
+
+
+class HhResumeLinkStatus(StrEnum):
+    """Lifecycle of the local link from ProfileVersion to an HH resume id."""
+
+    ACTIVE = "active"
+    CLEARED = "cleared"
+    STALE = "stale"
+
+
+class CandidateProfile(Base):
+    """Single-operator local candidate identity (not Person / OSINT contact)."""
+
+    __tablename__ = "candidate_profiles"
+    __table_args__ = (
+        UniqueConstraint("singleton_key", name="uq_candidate_profiles_singleton_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    singleton_key: Mapped[str] = mapped_column(String(64), default="operator")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    versions: Mapped[list[ProfileVersion]] = relationship(back_populates="candidate_profile")
+
+
+class ProfileVersion(Base):
+    """Versioned local candidate context used as HH resume linkage target (R1.5)."""
+
+    __tablename__ = "profile_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "candidate_profile_id",
+            "label",
+            name="uq_profile_versions_profile_label",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_profile_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("candidate_profiles.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    label: Mapped[str] = mapped_column(String(255), default="r1-default")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    candidate_profile: Mapped[CandidateProfile] = relationship(back_populates="versions")
+    hh_resume_link: Mapped[ActiveHhResumeLink | None] = relationship(
+        back_populates="profile_version", uselist=False
+    )
+
+
+class ActiveHhResumeLink(Base):
+    """Local link of one ProfileVersion to an HH external resume id."""
+
+    __tablename__ = "active_hh_resume_links"
+    __table_args__ = (
+        UniqueConstraint("profile_version_id", name="uq_active_hh_resume_links_profile_version"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    profile_version_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("profile_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(64), default="hh")
+    external_resume_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[HhResumeLinkStatus] = mapped_column(
+        Enum(HhResumeLinkStatus, name="hh_resume_link_status", native_enum=False),
+        default=HhResumeLinkStatus.CLEARED,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    profile_version: Mapped[ProfileVersion] = relationship(back_populates="hh_resume_link")

@@ -31,6 +31,11 @@ from job_search_core.assessments import (
     create_assessment,
     list_assessments,
 )
+from job_search_core.candidate_context import (
+    HhResumeLinkValidationError,
+    get_candidate_context,
+    set_hh_resume_link,
+)
 from job_search_core.companies import CompanyNotFoundError, set_company_website
 from job_search_core.config import Settings
 from job_search_core.database import Database
@@ -70,12 +75,16 @@ from job_search_core.schemas import (
     AssessmentCreate,
     AssessmentList,
     AssessmentRead,
+    CandidateContextRead,
+    CandidateProfileRead,
     CompanyRead,
     CompanyWebsiteUpdate,
     DailyMetricList,
     DailyMetricRead,
     DailyMetricUpdate,
     ErrorDetail,
+    HhResumeLinkRead,
+    HhResumeLinkUpdate,
     HypothesisClose,
     HypothesisCreate,
     HypothesisList,
@@ -84,6 +93,7 @@ from job_search_core.schemas import (
     PersonList,
     PersonRead,
     PersonStatusUpdate,
+    ProfileVersionRead,
     VacancyCreate,
     VacancyList,
     VacancyRead,
@@ -494,6 +504,49 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
                 for item in list_assessments(session, vacancy_id)
             ]
         return AssessmentList(items=items, total=len(items))
+
+    def _candidate_context_payload(context: object) -> CandidateContextRead:
+        profile = getattr(context, "candidate_profile", None)
+        version = getattr(context, "profile_version", None)
+        link = getattr(context, "hh_resume_link", None)
+        return CandidateContextRead(
+            candidate_profile=(
+                CandidateProfileRead.model_validate(profile) if profile is not None else None
+            ),
+            profile_version=(
+                ProfileVersionRead.model_validate(version) if version is not None else None
+            ),
+            hh_resume_link=(HhResumeLinkRead.model_validate(link) if link is not None else None),
+        )
+
+    @application.get(
+        "/api/v1/candidate-context",
+        response_model=CandidateContextRead,
+        tags=["candidate-context"],
+    )
+    def get_candidate_context_route() -> CandidateContextRead:
+        """Return operator CandidateProfile / ProfileVersion / HH link (or empty)."""
+        with persistence.session() as session:
+            return _candidate_context_payload(get_candidate_context(session))
+
+    @application.put(
+        "/api/v1/candidate-context/hh-resume-link",
+        response_model=CandidateContextRead,
+        responses={400: {"model": ErrorDetail}},
+        tags=["candidate-context"],
+    )
+    def put_hh_resume_link(request: HhResumeLinkUpdate) -> CandidateContextRead | JSONResponse:
+        """Create/update/clear ActiveHhResumeLink without deleting Core history."""
+        try:
+            with persistence.session() as session:
+                context = set_hh_resume_link(session, request)
+                return _candidate_context_payload(context)
+        except HhResumeLinkValidationError:
+            return error_response(
+                "invalid_hh_resume_link",
+                "external_resume_id must be a non-empty string or null with a valid status",
+                400,
+            )
 
     return application
 
