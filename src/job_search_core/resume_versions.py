@@ -88,8 +88,9 @@ def resume_content_meta(session: Session, context: CandidateContext) -> ResumeCo
     if link is None or version is None:
         return None
     if link.status != HhResumeLinkStatus.ACTIVE or not link.external_resume_id:
+        # Cleared / inactive: no current local copy; history rows are untouched.
         return ResumeContentMeta(
-            content_state="not_synced",
+            content_state="none",
             resume_version_id=None,
             external_resume_id=None,
             captured_at=None,
