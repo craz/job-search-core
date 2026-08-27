@@ -21,9 +21,11 @@
 
 ## Company note
 
-Stable employer id → Company `(source, external_id)` + name refresh.
-Missing employer id → `name:{casefold}` fallback (collision risk documented;
-not expanded into fuzzy merge).
+- Stable employer id → Company `(source, external_id)` + name refresh.
+- Missing employer id (HH mapper) → vacancy-scoped
+  `vacancy:<vacancy_external_id>:employer` (never global `name:` merge).
+- Future/debt: merge fallback Company into real employer id if it appears later;
+  fuzzy/domain matching.
 
 ## Non-scope
 

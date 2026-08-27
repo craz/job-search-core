@@ -138,3 +138,80 @@ def test_company_name_refresh_with_stable_employer_id() -> None:
         assert second.outcome == VacancyIngestOutcome.UNCHANGED
         assert second.vacancy.company.name == "Acme Renamed"
         assert second.vacancy.company.external_id == "42"
+
+
+def test_stable_employer_id_reused_across_vacancies() -> None:
+    database = create_test_database()
+    with database.session() as session:
+        a = ingest_vacancy(
+            session, _ingest_payload(external_id="1001", url="https://hh.ru/vacancy/1001")
+        )
+        b = ingest_vacancy(
+            session,
+            _ingest_payload(
+                external_id="1002",
+                url="https://hh.ru/vacancy/1002",
+                title="Other role",
+            ),
+        )
+        assert a.vacancy.company_id == b.vacancy.company_id
+        assert a.vacancy.company.external_id == "42"
+
+
+def test_same_name_without_employer_id_isolates_companies() -> None:
+    database = create_test_database()
+    with database.session() as session:
+        a = ingest_vacancy(
+            session,
+            _ingest_payload(
+                external_id="100",
+                url="https://hh.ru/vacancy/100",
+                company_name="Ромашка",
+                company_external_id="vacancy:100:employer",
+            ),
+        )
+        b = ingest_vacancy(
+            session,
+            _ingest_payload(
+                external_id="200",
+                url="https://hh.ru/vacancy/200",
+                company_name="Ромашка",
+                company_external_id="vacancy:200:employer",
+            ),
+        )
+        assert a.vacancy.company_id != b.vacancy.company_id
+        assert a.vacancy.company.external_id == "vacancy:100:employer"
+        assert b.vacancy.company.external_id == "vacancy:200:employer"
+
+
+def test_repeat_vacancy_scoped_fallback_reuses_same_company() -> None:
+    database = create_test_database()
+    with database.session() as session:
+        first = ingest_vacancy(
+            session,
+            _ingest_payload(
+                company_name="Ромашка",
+                company_external_id="vacancy:1001:employer",
+            ),
+        )
+        company_id = first.vacancy.company_id
+        second = ingest_vacancy(
+            session,
+            _ingest_payload(
+                company_name="Ромашка",
+                company_external_id="vacancy:1001:employer",
+            ),
+        )
+        assert second.outcome == VacancyIngestOutcome.UNCHANGED
+        assert second.vacancy.company_id == company_id
+
+        updated = ingest_vacancy(
+            session,
+            _ingest_payload(
+                company_name="Ромашка",
+                company_external_id="vacancy:1001:employer",
+                description="Changed source description",
+            ),
+        )
+        assert updated.outcome == VacancyIngestOutcome.UPDATED
+        assert updated.vacancy.company_id == company_id

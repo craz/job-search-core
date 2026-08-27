@@ -19,16 +19,10 @@ def upgrade() -> None:
     """Extend vacancies for provider ingest without breaking historical rows."""
     op.add_column("vacancies", sa.Column("salary_text", sa.String(length=500), nullable=True))
     op.add_column("vacancies", sa.Column("area_text", sa.String(length=500), nullable=True))
-    op.add_column(
-        "vacancies", sa.Column("employment_text", sa.String(length=255), nullable=True)
-    )
+    op.add_column("vacancies", sa.Column("employment_text", sa.String(length=255), nullable=True))
     op.add_column("vacancies", sa.Column("schedule_text", sa.String(length=255), nullable=True))
-    op.add_column(
-        "vacancies", sa.Column("work_format_text", sa.String(length=255), nullable=True)
-    )
-    op.add_column(
-        "vacancies", sa.Column("experience_text", sa.String(length=255), nullable=True)
-    )
+    op.add_column("vacancies", sa.Column("work_format_text", sa.String(length=255), nullable=True))
+    op.add_column("vacancies", sa.Column("experience_text", sa.String(length=255), nullable=True))
     op.add_column("vacancies", sa.Column("published_text", sa.String(length=255), nullable=True))
     op.add_column("vacancies", sa.Column("archived", sa.Boolean(), nullable=True))
     op.add_column("vacancies", sa.Column("content_hash", sa.String(length=64), nullable=True))
