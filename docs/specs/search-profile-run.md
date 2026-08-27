@@ -18,9 +18,12 @@
 - finalize recomputes aggregate counters from items;
 - HTTP `/api/v1/search-profiles` and `/api/v1/search-runs` (+ items/finalize).
 
-## Uniqueness
+## Uniqueness / terminal immutability
 
 `uq_search_run_items_run_external` on `(search_run_id, source_external_id)`.
+No mutation API for existing SearchRunItem outcomes. After finalize, item
+writes and repeated finalize are rejected (`SearchRunNotRunningError` → HTTP 409
+`search_run_not_running`).
 
 ## Non-scope
 

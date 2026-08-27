@@ -134,3 +134,27 @@ def test_search_profile_run_lifecycle_and_items() -> None:
         headers={},
     )
     assert after_terminal.status_code == 409
+    assert after_terminal.json()["code"] == "search_run_not_running"
+
+    repeat_finalize = client.post(
+        f"/api/v1/search-runs/{run_id}/finalize",
+        json={"status": "partial"},
+        headers={},
+    )
+    assert repeat_finalize.status_code == 409
+    assert repeat_finalize.json()["code"] == "search_run_not_running"
+
+    switch_terminal = client.post(
+        f"/api/v1/search-runs/{run_id}/finalize",
+        json={"status": "success"},
+        headers={},
+    )
+    assert switch_terminal.status_code == 409
+    assert switch_terminal.json()["code"] == "search_run_not_running"
+
+    frozen = client.get(f"/api/v1/search-runs/{run_id}").json()
+    assert frozen["status"] == "partial"
+    assert frozen["found_count"] == 2
+    assert frozen["created_count"] == 1
+    assert frozen["error_count"] == 1
+    assert client.get(f"/api/v1/search-runs/{run_id}/items").json()["total"] == 2

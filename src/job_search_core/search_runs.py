@@ -305,13 +305,15 @@ def recompute_run_counters(session: Session, run: SearchRun) -> None:
 def finalize_search_run(
     session: Session, run_id: uuid.UUID, request: SearchRunFinalize
 ) -> SearchRun:
-    """Move a running SearchRun to a terminal status and stamp finished_at."""
+    """Move a running SearchRun to a terminal status and stamp finished_at.
+
+    Terminal runs are immutable: repeated finalize and terminal→terminal
+    transitions are rejected.
+    """
     run = session.get(SearchRun, run_id)
     if run is None:
         raise SearchRunNotFoundError
     if run.status != SearchRunStatus.RUNNING:
-        if run.status == request.status and run.finished_at is not None:
-            return run
         raise SearchRunNotRunningError
     if request.status not in TERMINAL_STATUSES:
         raise SearchValidationError("finalize_status_must_be_terminal")

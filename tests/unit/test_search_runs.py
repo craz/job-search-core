@@ -17,6 +17,7 @@ from job_search_core.schemas import (
 )
 from job_search_core.search_runs import (
     SearchRunItemValidationError,
+    SearchRunNotRunningError,
     add_search_run_item,
     create_search_profile,
     criteria_snapshot_from_profile,
@@ -126,3 +127,50 @@ def test_error_item_without_vacancy_and_counters() -> None:
         assert finalized.error_count == 1
         assert finalized.updated_count == 0
         assert finalized.unchanged_count == 0
+
+
+def test_terminal_run_rejects_items_and_re_finalize() -> None:
+    database = create_test_database()
+    with database.session() as session:
+        profile = create_search_profile(session, SearchProfileCreate(text="pm"))
+        run = start_search_run(session, SearchRunCreate(search_profile_id=profile.id))
+        vacancy = create_vacancy(
+            session,
+            VacancyCreate(
+                company_name="Labs",
+                company_external_id="c2",
+                source="hh",
+                external_id="v-term",
+                title="PM",
+                url="https://example.com/v/2",
+            ),
+            "key-v2",
+        ).vacancy
+        add_search_run_item(
+            session,
+            run.id,
+            SearchRunItemCreate(
+                source_external_id="v-term",
+                outcome=SearchRunItemOutcome.CREATED,
+                vacancy_id=vacancy.id,
+            ),
+        )
+        finalize_search_run(session, run.id, SearchRunFinalize(status=SearchRunStatus.SUCCESS))
+        with pytest.raises(SearchRunNotRunningError):
+            add_search_run_item(
+                session,
+                run.id,
+                SearchRunItemCreate(
+                    source_external_id="late",
+                    outcome=SearchRunItemOutcome.UNCHANGED,
+                    vacancy_id=vacancy.id,
+                ),
+            )
+        with pytest.raises(SearchRunNotRunningError):
+            finalize_search_run(session, run.id, SearchRunFinalize(status=SearchRunStatus.SUCCESS))
+        with pytest.raises(SearchRunNotRunningError):
+            finalize_search_run(session, run.id, SearchRunFinalize(status=SearchRunStatus.FAILED))
+        session.refresh(run)
+        assert run.status == SearchRunStatus.SUCCESS
+        assert run.found_count == 1
+        assert run.created_count == 1
