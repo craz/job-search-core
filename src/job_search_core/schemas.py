@@ -340,12 +340,64 @@ class HhResumeLinkRead(BaseModel):
     updated_at: datetime
 
 
+class ResumeContentMetaRead(BaseModel):
+    """ResumeVersion metadata only (no CV body) for candidate-context."""
+
+    content_state: str
+    resume_version_id: uuid.UUID | None = None
+    external_resume_id: str | None = None
+    captured_at: datetime | None = None
+    source: str | None = None
+    schema_version: int | None = None
+
+
 class CandidateContextRead(BaseModel):
-    """Operator candidate context: profile, version, and optional HH resume link."""
+    """Operator candidate context: profile, version, HH link, resume content meta."""
 
     candidate_profile: CandidateProfileRead | None
     profile_version: ProfileVersionRead | None
     hh_resume_link: HhResumeLinkRead | None
+    resume_content: ResumeContentMetaRead | None = None
+
+
+class ResumeVersionIngest(BaseModel):
+    """Fixture / HH-sync ingest of one resume content snapshot."""
+
+    source: str = "hh"
+    external_resume_id: str
+    content: dict[str, object]
+    transport: str = "fixture"
+    extractor_version: str | None = None
+    captured_at: datetime | None = None
+
+
+class ResumeVersionMetaRead(BaseModel):
+    """Public ResumeVersion identity and provenance without body."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source: str
+    external_resume_id: str
+    schema_version: int
+    content_hash: str
+    captured_at: datetime
+    transport: str
+    extractor_version: str | None
+
+
+class ResumeVersionRead(ResumeVersionMetaRead):
+    """Full ResumeVersion including normalized JSON content."""
+
+    content: dict[str, object]
+
+
+class ResumeVersionIngestResultRead(BaseModel):
+    """Ingest response: whether a new immutable row was created."""
+
+    created: bool
+    resume_version: ResumeVersionMetaRead
+    candidate_context: CandidateContextRead
 
 
 class ErrorDetail(BaseModel):

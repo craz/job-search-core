@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime
 from enum import StrEnum
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     Date,
     DateTime,
@@ -18,6 +19,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -370,6 +372,7 @@ class ProfileVersion(Base):
     hh_resume_link: Mapped[ActiveHhResumeLink | None] = relationship(
         back_populates="profile_version", uselist=False
     )
+    resume_versions: Mapped[list[ResumeVersion]] = relationship(back_populates="profile_version")
 
 
 class ActiveHhResumeLink(Base):
@@ -398,3 +401,25 @@ class ActiveHhResumeLink(Base):
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
     profile_version: Mapped[ProfileVersion] = relationship(back_populates="hh_resume_link")
+
+
+class ResumeVersion(Base):
+    """Immutable local resume content snapshot (R2.1.1). Never update ``content``."""
+
+    __tablename__ = "resume_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    profile_version_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("profile_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(64), default="hh")
+    external_resume_id: Mapped[str] = mapped_column(String(255))
+    schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    content: Mapped[dict[str, object]] = mapped_column(JSON().with_variant(JSONB(), "postgresql"))
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    transport: Mapped[str] = mapped_column(String(64), default="browser_readonly")
+    extractor_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    profile_version: Mapped[ProfileVersion] = relationship(back_populates="resume_versions")

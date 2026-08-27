@@ -68,6 +68,12 @@ from job_search_core.people import (
     list_people,
     update_person_status,
 )
+from job_search_core.resume_versions import (
+    ResumeVersionValidationError,
+    get_resume_version,
+    ingest_resume_version,
+    resume_content_meta,
+)
 from job_search_core.schemas import (
     ApplicationCreate,
     ApplicationList,
@@ -94,6 +100,11 @@ from job_search_core.schemas import (
     PersonRead,
     PersonStatusUpdate,
     ProfileVersionRead,
+    ResumeContentMetaRead,
+    ResumeVersionIngest,
+    ResumeVersionIngestResultRead,
+    ResumeVersionMetaRead,
+    ResumeVersionRead,
     VacancyCreate,
     VacancyList,
     VacancyRead,
@@ -505,10 +516,11 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
             ]
         return AssessmentList(items=items, total=len(items))
 
-    def _candidate_context_payload(context: object) -> CandidateContextRead:
+    def _candidate_context_payload(session: object, context: object) -> CandidateContextRead:
         profile = getattr(context, "candidate_profile", None)
         version = getattr(context, "profile_version", None)
         link = getattr(context, "hh_resume_link", None)
+        meta = resume_content_meta(session, context)  # type: ignore[arg-type]
         return CandidateContextRead(
             candidate_profile=(
                 CandidateProfileRead.model_validate(profile) if profile is not None else None
@@ -517,6 +529,18 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
                 ProfileVersionRead.model_validate(version) if version is not None else None
             ),
             hh_resume_link=(HhResumeLinkRead.model_validate(link) if link is not None else None),
+            resume_content=(
+                ResumeContentMetaRead(
+                    content_state=meta.content_state,
+                    resume_version_id=meta.resume_version_id,
+                    external_resume_id=meta.external_resume_id,
+                    captured_at=meta.captured_at,
+                    source=meta.source,
+                    schema_version=meta.schema_version,
+                )
+                if meta is not None
+                else None
+            ),
         )
 
     @application.get(
@@ -527,7 +551,7 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
     def get_candidate_context_route() -> CandidateContextRead:
         """Return operator CandidateProfile / ProfileVersion / HH link (or empty)."""
         with persistence.session() as session:
-            return _candidate_context_payload(get_candidate_context(session))
+            return _candidate_context_payload(session, get_candidate_context(session))
 
     @application.put(
         "/api/v1/candidate-context/hh-resume-link",
@@ -540,13 +564,54 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
         try:
             with persistence.session() as session:
                 context = set_hh_resume_link(session, request)
-                return _candidate_context_payload(context)
+                return _candidate_context_payload(session, context)
         except HhResumeLinkValidationError:
             return error_response(
                 "invalid_hh_resume_link",
                 "external_resume_id must be a non-empty string or null with a valid status",
                 400,
             )
+
+    @application.post(
+        "/api/v1/resume-versions",
+        response_model=ResumeVersionIngestResultRead,
+        responses={400: {"model": ErrorDetail}},
+        tags=["resume-versions"],
+    )
+    def post_resume_version(
+        request: ResumeVersionIngest,
+    ) -> ResumeVersionIngestResultRead | JSONResponse:
+        """Ingest fixture/HH snapshot: create immutable row or reuse identical hash."""
+        try:
+            with persistence.session() as session:
+                result = ingest_resume_version(session, request)
+                return ResumeVersionIngestResultRead(
+                    created=result.created,
+                    resume_version=ResumeVersionMetaRead.model_validate(result.resume_version),
+                    candidate_context=_candidate_context_payload(session, result.candidate_context),
+                )
+        except ResumeVersionValidationError as error:
+            return error_response("invalid_resume_version", str(error), 400)
+
+    @application.get(
+        "/api/v1/resume-versions/{resume_version_id}",
+        response_model=ResumeVersionRead,
+        responses={404: {"model": ErrorDetail}},
+        tags=["resume-versions"],
+    )
+    def get_resume_version_route(
+        resume_version_id: uuid.UUID,
+    ) -> ResumeVersionRead | JSONResponse:
+        """Return full normalized snapshot body for one ResumeVersion."""
+        with persistence.session() as session:
+            row = get_resume_version(session, resume_version_id)
+            if row is None:
+                return error_response(
+                    "resume_version_not_found",
+                    "ResumeVersion not found",
+                    404,
+                )
+            return ResumeVersionRead.model_validate(row)
 
     return application
 

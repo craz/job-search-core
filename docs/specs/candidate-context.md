@@ -1,4 +1,4 @@
-# Candidate context + HH resume linkage (R1.5)
+# Candidate context + HH resume linkage (R1.5) + ResumeVersion meta (R2.1.1)
 
 ## User Story
 
@@ -16,22 +16,17 @@
 - Select creates profile + `r1-default` version + `source=hh` link (`status=active`)
 - Clear marks `status=cleared` without deleting profile/version history
 - Not Person / Application.resume_version / SearchProfile
+- R2.1.1: `resume_content` metadata on candidate-context (no CV body). Full body:
+  `GET /api/v1/resume-versions/{id}` — see [`resume-version.md`](resume-version.md)
 
-## Identifier-only (not scoring-ready)
+## Identifier-only linkage (R1.5)
 
 R1.5 stores **linkage only**:
 
 `CandidateProfile` / `ProfileVersion` ↔ HH `external_resume_id` (+ optional cached `title`)
 
-It does **not** store resume content (experience, skills, education, summary, …)
-and **must not** be treated as a scoring-ready candidate profile.
-
-Before **PB-03 Scoring** can consume candidate context, **R2 / full PB-01** must
-create or attach a local resume snapshot/version that contains actual resume
-content (see `ARCHITECTURE_PLAN.md` `ResumeVersion` / remaining PB-01).
+Resume **content** is R2.1.1+ (`ResumeVersion`). Linkage alone is **not** scoring-ready.
 
 ## Non-scope
 
-Full SearchProfile, resume content ingestion, scoring input wiring, R1.6 recovery.
-Web copy «Локальная связь: активна» is acceptance/debug visibility — not a
-required permanent product UI surface.
+Full SearchProfile, HH content extraction (R2.1.2), Web sync UX (R2.1.5), scoring.
