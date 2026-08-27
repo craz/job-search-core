@@ -3,15 +3,12 @@
 All notable changes to this project will be documented here. The format follows
 Keep a Changelog and versions follow Semantic Versioning.
 
-## [Unreleased]
-
-### Changed
-
-- SearchRun `execution_snapshot`: `page_size` is optional and omitted for
-  browser transport (no fake default page_size).
+## Unreleased
 
 ### Added
 
+- R2.2.5 temporal: `first_seen_at`, `last_seen_at`, nullable `source_published_at`
+  on Vacancy; migration `20260828_13` with approximate backfill from `created_at`.
 - R2.2.5: SearchRun `acquisition_kind` (`profile_search` | `resume_suitable`),
   nullable `search_profile_id`, optional `source_total` (HH total ≠ processed
   `found_count`); migration `20260827_12`.

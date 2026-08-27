@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from typing import Any
 
 VACANCY_CONTENT_SCHEMA_VERSION = 1
 
 # Source-owned fields that participate in content_hash.
 # Excludes: Core UUID, Vacancy.status, Applications/Assessments/People,
-# idempotency_key, request_fingerprint, created_at/updated_at, company display
-# name (Company.name is refreshed separately when employer id is stable).
+# idempotency_key, request_fingerprint, created_at/updated_at, first_seen_at,
+# last_seen_at, company display name (Company.name is refreshed separately
+# when employer id is stable). source_published_at is source-owned when supplied.
 _HASH_FIELDS = (
     "schema_version",
     "source",
@@ -27,6 +29,7 @@ _HASH_FIELDS = (
     "work_format_text",
     "experience_text",
     "published_text",
+    "source_published_at",
     "archived",
 )
 
@@ -67,6 +70,15 @@ def canonicalize_vacancy_content(raw: dict[str, Any]) -> dict[str, Any]:
     else:
         archived = None
 
+    source_published_at_raw = raw.get("source_published_at")
+    source_published_at: str | None = None
+    if isinstance(source_published_at_raw, datetime):
+        source_published_at = source_published_at_raw.isoformat()
+    elif isinstance(source_published_at_raw, str):
+        cleaned = source_published_at_raw.strip()
+        if cleaned:
+            source_published_at = cleaned
+
     canonical: dict[str, Any] = {
         "schema_version": VACANCY_CONTENT_SCHEMA_VERSION,
         "source": source,
@@ -82,6 +94,7 @@ def canonicalize_vacancy_content(raw: dict[str, Any]) -> dict[str, Any]:
         "work_format_text": _clean_str(raw.get("work_format_text"), max_length=255),
         "experience_text": _clean_str(raw.get("experience_text"), max_length=255),
         "published_text": _clean_str(raw.get("published_text"), max_length=255),
+        "source_published_at": source_published_at,
         "archived": archived,
     }
     return canonical

@@ -52,6 +52,7 @@ class VacancyIngest(BaseModel):
     experience_text: str | None = Field(default=None, max_length=255)
     published_text: str | None = Field(default=None, max_length=255)
     archived: bool | None = None
+    source_published_at: datetime | None = None
 
 
 class VacancyIngestOutcome(StrEnum):
@@ -99,6 +100,9 @@ class VacancyRead(BaseModel):
     experience_text: str | None = None
     published_text: str | None = None
     archived: bool | None = None
+    source_published_at: datetime | None = None
+    first_seen_at: datetime
+    last_seen_at: datetime
     content_hash: str | None = None
     status: VacancyStatus
     created_at: datetime

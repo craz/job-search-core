@@ -14,7 +14,10 @@
 - Outcomes: `created` | `updated` | `unchanged`
 - Core-owned `content_hash` over source-owned fields only
 - Source fields: title, url, description, salary/area/employment/schedule/
-  work_format/experience/published texts, archived
+  work_format/experience/published texts, archived, optional `source_published_at`
+- Acquisition provenance: `first_seen_at` (immutable), `last_seen_at` (advances on
+  successful ingest even when unchanged); excluded from `content_hash`
+- List order: `first_seen_at DESC` (legacy `captured_at` freshness semantics)
 - User-owned `Vacancy.status` + relations preserved on update
 - Manual `POST /api/v1/vacancies` + Idempotency-Key unchanged
 - `idempotency_key` / `request_fingerprint` nullable for ingest rows

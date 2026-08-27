@@ -130,6 +130,11 @@ class Vacancy(Base):
     published_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
     archived: Mapped[bool | None] = mapped_column(Boolean(), nullable=True)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    source_published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     status: Mapped[VacancyStatus] = mapped_column(
         Enum(VacancyStatus, name="vacancy_status", native_enum=False),
         default=VacancyStatus.NEW,

@@ -6,11 +6,12 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from job_search_core.models import Company, Vacancy, VacancyStatus
+from job_search_core.models import Company, Vacancy, VacancyStatus, utc_now
 from job_search_core.schemas import VacancyCreate, VacancyIngest, VacancyIngestOutcome
 from job_search_core.vacancy_content import (
     VacancyContentValidationError,
@@ -86,9 +87,24 @@ def _apply_source_fields(vacancy: Vacancy, canonical: dict[str, object], digest:
     vacancy.published_text = (
         str(canonical["published_text"]) if canonical.get("published_text") is not None else None
     )
+    published_at = canonical.get("source_published_at")
+    if isinstance(published_at, str) and published_at.strip():
+        try:
+            vacancy.source_published_at = datetime.fromisoformat(
+                published_at.replace("Z", "+00:00")
+            )
+        except ValueError:
+            vacancy.source_published_at = None
+    else:
+        vacancy.source_published_at = None
     archived = canonical.get("archived")
     vacancy.archived = archived if isinstance(archived, bool) else None
     vacancy.content_hash = digest
+
+
+def _touch_last_seen(vacancy: Vacancy) -> None:
+    """Record a successful source fetch/ingest without changing source content."""
+    vacancy.last_seen_at = utc_now()
 
 
 def _ensure_company(
@@ -161,12 +177,15 @@ def create_vacancy(session: Session, request: VacancyCreate, idempotency_key: st
     except VacancyContentValidationError as error:
         raise VacancyIngestValidationError(str(error)) from error
 
+    now = utc_now()
     vacancy = Vacancy(
         company=company,
         source=str(canonical["source"]),
         external_id=str(canonical["external_id"]),
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint,
+        first_seen_at=now,
+        last_seen_at=now,
     )
     _apply_source_fields(vacancy, canonical, digest)
     session.add(vacancy)
@@ -201,6 +220,7 @@ def ingest_vacancy(session: Session, request: VacancyIngest) -> IngestResult:
         )
     )
     if existing is None:
+        now = utc_now()
         vacancy = Vacancy(
             company=company,
             source=str(canonical["source"]),
@@ -208,6 +228,8 @@ def ingest_vacancy(session: Session, request: VacancyIngest) -> IngestResult:
             status=VacancyStatus.NEW,
             idempotency_key=None,
             request_fingerprint=None,
+            first_seen_at=now,
+            last_seen_at=now,
         )
         _apply_source_fields(vacancy, canonical, digest)
         session.add(vacancy)
@@ -219,12 +241,15 @@ def ingest_vacancy(session: Session, request: VacancyIngest) -> IngestResult:
         if existing.company_id != company.id:
             existing.company = company
             session.flush()
+        _touch_last_seen(existing)
+        session.flush()
         return IngestResult(vacancy=existing, outcome=VacancyIngestOutcome.UNCHANGED)
 
     prior_status = existing.status
     _apply_source_fields(existing, canonical, digest)
     existing.company = company
     existing.status = prior_status
+    _touch_last_seen(existing)
     session.flush()
     return IngestResult(vacancy=existing, outcome=VacancyIngestOutcome.UPDATED)
 
@@ -235,7 +260,7 @@ def list_vacancies(session: Session) -> list[Vacancy]:
         session.scalars(
             select(Vacancy)
             .options(joinedload(Vacancy.company))
-            .order_by(Vacancy.created_at.desc(), Vacancy.id.desc())
+            .order_by(Vacancy.first_seen_at.desc(), Vacancy.id.desc())
         )
     )
 
