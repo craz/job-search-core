@@ -29,7 +29,6 @@ from job_search_core.schemas import (
 
 DEFAULT_EXECUTION: dict[str, object] = {
     "order": "publication_time",
-    "page_size": 20,
     "max_pages": 5,
 }
 
@@ -96,21 +95,32 @@ def normalize_execution_snapshot(raw: dict[str, object] | None) -> dict[str, obj
     order = str(base.get("order") or "").strip()
     if not order:
         raise SearchValidationError("execution.order_required")
-    raw_page_size = base.get("page_size")
     raw_max_pages = base.get("max_pages")
-    if not isinstance(raw_page_size, (int, str)) or not isinstance(raw_max_pages, (int, str)):
+    if not isinstance(raw_max_pages, (int, str)):
         raise SearchValidationError("execution.page_bounds_invalid")
     try:
-        page_size = int(raw_page_size)
         max_pages = int(raw_max_pages)
     except (TypeError, ValueError) as error:
         raise SearchValidationError("execution.page_bounds_invalid") from error
-    if page_size < 1 or page_size > 100:
-        raise SearchValidationError("execution.page_size_out_of_range")
     if max_pages < 1 or max_pages > 100:
         raise SearchValidationError("execution.max_pages_out_of_range")
+
+    # page_size is optional: HH Web browser transport does not expose it.
+    raw_page_size = base.get("page_size")
+    if raw_page_size is None:
+        base.pop("page_size", None)
+    else:
+        if not isinstance(raw_page_size, (int, str)):
+            raise SearchValidationError("execution.page_bounds_invalid")
+        try:
+            page_size = int(raw_page_size)
+        except (TypeError, ValueError) as error:
+            raise SearchValidationError("execution.page_bounds_invalid") from error
+        if page_size < 1 or page_size > 100:
+            raise SearchValidationError("execution.page_size_out_of_range")
+        base["page_size"] = page_size
+
     base["order"] = order
-    base["page_size"] = page_size
     base["max_pages"] = max_pages
     return base
 

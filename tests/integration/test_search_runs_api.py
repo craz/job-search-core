@@ -32,7 +32,7 @@ def test_search_profile_run_lifecycle_and_items() -> None:
         "/api/v1/search-runs",
         json={
             "search_profile_id": profile["id"],
-            "execution": {"order": "publication_time", "page_size": 20, "max_pages": 3},
+            "execution": {"order": "publication_time", "max_pages": 3, "transport": "browser"},
         },
         headers={},
     )
@@ -44,9 +44,10 @@ def test_search_profile_run_lifecycle_and_items() -> None:
     assert run["criteria_snapshot"]["text"] == "project manager"
     assert run["criteria_snapshot"]["salary"]["from"] == 200000
     assert "page_size" not in run["criteria_snapshot"]
-    assert run["execution_snapshot"]["page_size"] == 20
+    assert "page_size" not in run["execution_snapshot"]
     assert run["execution_snapshot"]["max_pages"] == 3
     assert run["execution_snapshot"]["order"] == "publication_time"
+    assert run["execution_snapshot"]["transport"] == "browser"
     run_id = run["id"]
 
     patched = client.patch(

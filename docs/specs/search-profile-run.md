@@ -11,7 +11,8 @@
 ## Implemented
 
 - mutable `SearchProfile` with **semantic criteria only** (no page_size/max_pages/order);
-- `SearchRun` with immutable `criteria_snapshot` + `execution_snapshot`;
+- `SearchRun` with immutable `criteria_snapshot` + `execution_snapshot`
+  (`order`, `max_pages`; optional `page_size` — omitted for browser transport);
 - lifecycle `running → success|partial|failed` with `finished_at` only when terminal;
 - `SearchRunItem` provenance: unique `(search_run_id, source_external_id)`;
 - non-error outcomes require `vacancy_id`; `error` may omit `vacancy_id`;

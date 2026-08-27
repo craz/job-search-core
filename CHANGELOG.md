@@ -5,6 +5,11 @@ Keep a Changelog and versions follow Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- SearchRun `execution_snapshot`: `page_size` is optional and omitted for
+  browser transport (no fake default page_size).
+
 ### Added
 
 - Reproducible Python, direnv, CI and Docker development scaffold.

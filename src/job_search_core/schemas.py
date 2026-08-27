@@ -521,7 +521,7 @@ class SearchExecutionSettings(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     order: str = Field(default="publication_time", min_length=1, max_length=64)
-    page_size: int = Field(default=20, ge=1, le=100)
+    page_size: int | None = Field(default=None, ge=1, le=100)
     max_pages: int = Field(default=5, ge=1, le=100)
 
 
