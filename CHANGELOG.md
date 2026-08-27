@@ -12,6 +12,9 @@ Keep a Changelog and versions follow Semantic Versioning.
 
 ### Added
 
+- R2.2.5: SearchRun `acquisition_kind` (`profile_search` | `resume_suitable`),
+  nullable `search_profile_id`, optional `source_total` (HH total ≠ processed
+  `found_count`); migration `20260827_12`.
 - Reproducible Python, direnv, CI and Docker development scaffold.
 - FastAPI liveness/readiness contracts and versioned JSON info CLI.
 - Unit, integration, contract and executable BDD test layers.

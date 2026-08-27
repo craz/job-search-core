@@ -444,6 +444,13 @@ class SearchRunStatus(StrEnum):
     FAILED = "failed"
 
 
+class SearchRunAcquisitionKind(StrEnum):
+    """How vacancies were discovered for one SearchRun."""
+
+    PROFILE_SEARCH = "profile_search"
+    RESUME_SUITABLE = "resume_suitable"
+
+
 class SearchRunItemOutcome(StrEnum):
     """Ingestion outcome for one source vacancy inside a SearchRun."""
 
@@ -483,10 +490,20 @@ class SearchRun(Base):
     __tablename__ = "search_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    search_profile_id: Mapped[uuid.UUID] = mapped_column(
+    search_profile_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("search_profiles.id", ondelete="RESTRICT"),
+        nullable=True,
         index=True,
+    )
+    acquisition_kind: Mapped[SearchRunAcquisitionKind] = mapped_column(
+        Enum(
+            SearchRunAcquisitionKind,
+            name="search_run_acquisition_kind",
+            native_enum=False,
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        default=SearchRunAcquisitionKind.PROFILE_SEARCH,
     )
     source: Mapped[str] = mapped_column(String(64), default="hh")
     criteria_snapshot: Mapped[dict[str, object]] = mapped_column(
@@ -514,9 +531,10 @@ class SearchRun(Base):
     updated_count: Mapped[int] = mapped_column(Integer, default=0)
     unchanged_count: Mapped[int] = mapped_column(Integer, default=0)
     error_count: Mapped[int] = mapped_column(Integer, default=0)
+    source_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     recovery_hint: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    search_profile: Mapped[SearchProfile] = relationship(back_populates="runs")
+    search_profile: Mapped[SearchProfile | None] = relationship(back_populates="runs")
     items: Mapped[list[SearchRunItem]] = relationship(back_populates="search_run")
 
 

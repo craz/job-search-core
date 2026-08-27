@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from job_search_core.models import (
     SearchProfile,
     SearchRun,
+    SearchRunAcquisitionKind,
     SearchRunItem,
     SearchRunItemOutcome,
     SearchRunStatus,
@@ -197,19 +198,39 @@ def update_search_profile(
 
 def start_search_run(session: Session, request: SearchRunCreate) -> SearchRun:
     """Create a running SearchRun with frozen criteria and execution snapshots."""
-    profile = session.get(SearchProfile, request.search_profile_id)
-    if profile is None:
-        raise SearchProfileNotFoundError
+    kind = request.acquisition_kind
     try:
         execution = normalize_execution_snapshot(
             request.execution.model_dump(exclude_none=True) if request.execution else None
         )
     except SearchValidationError:
         raise
+
+    if kind == SearchRunAcquisitionKind.PROFILE_SEARCH:
+        if request.search_profile_id is None:
+            raise SearchValidationError("search_profile_id_required_for_profile_search")
+        profile = session.get(SearchProfile, request.search_profile_id)
+        if profile is None:
+            raise SearchProfileNotFoundError
+        criteria = criteria_snapshot_from_profile(profile)
+        profile_id = profile.id
+    elif kind == SearchRunAcquisitionKind.RESUME_SUITABLE:
+        if request.search_profile_id is not None:
+            raise SearchValidationError("search_profile_id_forbidden_for_resume_suitable")
+        context = request.candidate_context_snapshot or {}
+        resume_id = str(context.get("hh_resume_external_id") or "").strip()
+        if not resume_id:
+            raise SearchValidationError("hh_resume_external_id_required_for_resume_suitable")
+        criteria = {}
+        profile_id = None
+    else:
+        raise SearchValidationError("acquisition_kind_unsupported")
+
     run = SearchRun(
-        search_profile_id=profile.id,
+        search_profile_id=profile_id,
+        acquisition_kind=kind,
         source="hh",
-        criteria_snapshot=criteria_snapshot_from_profile(profile),
+        criteria_snapshot=criteria,
         execution_snapshot=execution,
         candidate_context_snapshot=request.candidate_context_snapshot,
         status=SearchRunStatus.RUNNING,
@@ -332,5 +353,7 @@ def finalize_search_run(
     run.finished_at = utc_now()
     run.error_code = request.error_code
     run.recovery_hint = request.recovery_hint
+    if request.source_total is not None:
+        run.source_total = request.source_total
     session.flush()
     return run

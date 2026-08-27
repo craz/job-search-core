@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from tests.support import create_test_database
 
-from job_search_core.models import SearchRunItemOutcome, SearchRunStatus
+from job_search_core.models import SearchRunAcquisitionKind, SearchRunItemOutcome, SearchRunStatus
 from job_search_core.schemas import (
     SearchExecutionSettings,
     SearchProfileCreate,
@@ -18,6 +18,7 @@ from job_search_core.schemas import (
 from job_search_core.search_runs import (
     SearchRunItemValidationError,
     SearchRunNotRunningError,
+    SearchValidationError,
     add_search_run_item,
     create_search_profile,
     criteria_snapshot_from_profile,
@@ -28,7 +29,69 @@ from job_search_core.search_runs import (
 from job_search_core.vacancies import create_vacancy
 
 
-def test_criteria_snapshot_excludes_execution_knobs() -> None:
+def test_resume_suitable_requires_null_profile_and_resume_context() -> None:
+    database = create_test_database()
+    with database.session() as session:
+        with pytest.raises(SearchValidationError, match="hh_resume_external_id_required"):
+            start_search_run(
+                session,
+                SearchRunCreate(acquisition_kind=SearchRunAcquisitionKind.RESUME_SUITABLE),
+            )
+        profile = create_search_profile(session, SearchProfileCreate(text="python"))
+        with pytest.raises(SearchValidationError, match="search_profile_id_forbidden"):
+            start_search_run(
+                session,
+                SearchRunCreate(
+                    acquisition_kind=SearchRunAcquisitionKind.RESUME_SUITABLE,
+                    search_profile_id=profile.id,
+                    candidate_context_snapshot={
+                        "hh_resume_external_id": "abc",
+                        "hh_resume_title": "PM",
+                    },
+                ),
+            )
+        run = start_search_run(
+            session,
+            SearchRunCreate(
+                acquisition_kind=SearchRunAcquisitionKind.RESUME_SUITABLE,
+                candidate_context_snapshot={
+                    "hh_resume_external_id": "f3e5e5f7ff0f50d3e50039ed1f4436664d7338",
+                    "hh_resume_title": "Project Manager / Руководитель IT-проектов",
+                },
+                execution=SearchExecutionSettings(order="publication_time", max_pages=1),
+            ),
+        )
+        assert run.search_profile_id is None
+        assert run.acquisition_kind == SearchRunAcquisitionKind.RESUME_SUITABLE
+        assert run.criteria_snapshot == {}
+        assert run.candidate_context_snapshot["hh_resume_external_id"].startswith("f3e5")
+        assert run.execution_snapshot["order"] == "publication_time"
+
+
+def test_profile_search_still_requires_search_profile() -> None:
+    database = create_test_database()
+    with (
+        database.session() as session,
+        pytest.raises(SearchValidationError, match="search_profile_id_required"),
+    ):
+        start_search_run(
+            session,
+            SearchRunCreate(acquisition_kind=SearchRunAcquisitionKind.PROFILE_SEARCH),
+        )
+
+
+def test_finalize_stores_source_total() -> None:
+    database = create_test_database()
+    with database.session() as session:
+        profile = create_search_profile(session, SearchProfileCreate(text="python"))
+        run = start_search_run(session, SearchRunCreate(search_profile_id=profile.id))
+        finalized = finalize_search_run(
+            session,
+            run.id,
+            SearchRunFinalize(status=SearchRunStatus.SUCCESS, source_total=2272),
+        )
+        assert finalized.source_total == 2272
+        assert finalized.found_count == 0
     database = create_test_database()
     with database.session() as session:
         profile = create_search_profile(

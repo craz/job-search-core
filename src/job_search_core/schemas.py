@@ -15,6 +15,7 @@ from job_search_core.models import (
     HypothesisStatus,
     PersonRole,
     PersonStatus,
+    SearchRunAcquisitionKind,
     SearchRunItemOutcome,
     SearchRunStatus,
     VacancyStatus,
@@ -526,11 +527,12 @@ class SearchExecutionSettings(BaseModel):
 
 
 class SearchRunCreate(BaseModel):
-    """Start a SearchRun from a SearchProfile with explicit execution settings."""
+    """Start a SearchRun with explicit acquisition kind and execution settings."""
 
     model_config = ConfigDict(extra="forbid")
 
-    search_profile_id: uuid.UUID
+    acquisition_kind: SearchRunAcquisitionKind = SearchRunAcquisitionKind.PROFILE_SEARCH
+    search_profile_id: uuid.UUID | None = None
     execution: SearchExecutionSettings | None = None
     candidate_context_snapshot: dict[str, object] | None = None
 
@@ -541,7 +543,8 @@ class SearchRunRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    search_profile_id: uuid.UUID
+    search_profile_id: uuid.UUID | None
+    acquisition_kind: SearchRunAcquisitionKind
     source: str
     criteria_snapshot: dict[str, object]
     execution_snapshot: dict[str, object]
@@ -554,6 +557,7 @@ class SearchRunRead(BaseModel):
     updated_count: int
     unchanged_count: int
     error_count: int
+    source_total: int | None = None
     error_code: str | None
     recovery_hint: str | None
 
@@ -610,6 +614,7 @@ class SearchRunFinalize(BaseModel):
     status: SearchRunStatus
     error_code: str | None = Field(default=None, max_length=128)
     recovery_hint: str | None = Field(default=None, max_length=500)
+    source_total: int | None = Field(default=None, ge=0)
 
 
 class ErrorDetail(BaseModel):
