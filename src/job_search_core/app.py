@@ -117,6 +117,8 @@ from job_search_core.schemas import (
     SearchRunList,
     SearchRunRead,
     VacancyCreate,
+    VacancyIngest,
+    VacancyIngestResult,
     VacancyList,
     VacancyRead,
     VacancyStatusUpdate,
@@ -143,8 +145,10 @@ from job_search_core.search_runs import (
 from job_search_core.vacancies import (
     IdempotencyConflictError,
     VacancyAlreadyExistsError,
+    VacancyIngestValidationError,
     VacancyNotFoundError,
     create_vacancy,
+    ingest_vacancy,
     list_vacancies,
     update_vacancy_status,
 )
@@ -237,6 +241,25 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
             )
         response.status_code = 201 if result.created else 200
         return payload
+
+    @application.post(
+        "/api/v1/vacancies/ingest",
+        response_model=VacancyIngestResult,
+        status_code=status.HTTP_200_OK,
+        responses={400: {"model": ErrorDetail}},
+        tags=["vacancies"],
+    )
+    def post_vacancy_ingest(request: VacancyIngest) -> VacancyIngestResult | JSONResponse:
+        """Identity-safe source upsert: created | updated | unchanged (no Idempotency-Key)."""
+        try:
+            with persistence.session() as session:
+                result = ingest_vacancy(session, request)
+                return VacancyIngestResult(
+                    outcome=result.outcome,
+                    vacancy=VacancyRead.model_validate(result.vacancy),
+                )
+        except VacancyIngestValidationError as error:
+            return error_response("invalid_vacancy_ingest", str(error), 400)
 
     @application.get("/api/v1/vacancies", response_model=VacancyList, tags=["vacancies"])
     def get_vacancies() -> VacancyList:

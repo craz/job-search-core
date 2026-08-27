@@ -8,6 +8,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -120,12 +121,21 @@ class Vacancy(Base):
     title: Mapped[str] = mapped_column(String(500))
     url: Mapped[str] = mapped_column(String(2048))
     description: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    salary_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    area_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    employment_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    schedule_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    work_format_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    experience_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    published_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    archived: Mapped[bool | None] = mapped_column(Boolean(), nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     status: Mapped[VacancyStatus] = mapped_column(
         Enum(VacancyStatus, name="vacancy_status", native_enum=False),
         default=VacancyStatus.NEW,
     )
-    idempotency_key: Mapped[str] = mapped_column(String(255))
-    request_fingerprint: Mapped[str] = mapped_column(String(64))
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now

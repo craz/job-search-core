@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -30,6 +31,34 @@ class VacancyCreate(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     url: HttpUrl
     description: str | None = None
+
+
+class VacancyIngest(BaseModel):
+    """Provider-neutral source vacancy for identity-safe Core upsert (R2.2.3)."""
+
+    company_name: str = Field(min_length=1, max_length=255)
+    company_external_id: str = Field(min_length=1, max_length=255)
+    source: str = Field(min_length=1, max_length=64)
+    external_id: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=500)
+    url: HttpUrl
+    description: str | None = None
+    salary_text: str | None = Field(default=None, max_length=500)
+    area_text: str | None = Field(default=None, max_length=500)
+    employment_text: str | None = Field(default=None, max_length=255)
+    schedule_text: str | None = Field(default=None, max_length=255)
+    work_format_text: str | None = Field(default=None, max_length=255)
+    experience_text: str | None = Field(default=None, max_length=255)
+    published_text: str | None = Field(default=None, max_length=255)
+    archived: bool | None = None
+
+
+class VacancyIngestOutcome(StrEnum):
+    """Ingestion outcome for one (source, external_id) upsert."""
+
+    CREATED = "created"
+    UPDATED = "updated"
+    UNCHANGED = "unchanged"
 
 
 class CompanyRead(BaseModel):
@@ -61,10 +90,26 @@ class VacancyRead(BaseModel):
     title: str
     url: str
     description: str | None
+    salary_text: str | None = None
+    area_text: str | None = None
+    employment_text: str | None = None
+    schedule_text: str | None = None
+    work_format_text: str | None = None
+    experience_text: str | None = None
+    published_text: str | None = None
+    archived: bool | None = None
+    content_hash: str | None = None
     status: VacancyStatus
     created_at: datetime
     updated_at: datetime
     company: CompanyRead
+
+
+class VacancyIngestResult(BaseModel):
+    """Upsert response: outcome + persisted vacancy (same UUID across updates)."""
+
+    outcome: VacancyIngestOutcome
+    vacancy: VacancyRead
 
 
 class VacancyList(BaseModel):
