@@ -14,6 +14,8 @@ from job_search_core.models import (
     HypothesisStatus,
     PersonRole,
     PersonStatus,
+    SearchRunItemOutcome,
+    SearchRunStatus,
     VacancyStatus,
 )
 
@@ -398,6 +400,171 @@ class ResumeVersionIngestResultRead(BaseModel):
     created: bool
     resume_version: ResumeVersionMetaRead
     candidate_context: CandidateContextRead
+
+
+class SearchSalaryCriteria(BaseModel):
+    """Optional salary bounds inside SearchProfile semantic criteria."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_amount: int | None = Field(default=None, alias="from", ge=0)
+    to_amount: int | None = Field(default=None, alias="to", ge=0)
+    currency: str | None = Field(default=None, min_length=1, max_length=16)
+
+
+class SearchProfileCreate(BaseModel):
+    """Create a mutable SearchProfile with semantic criteria only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = Field(default=None, max_length=255)
+    text: str = Field(min_length=1, max_length=1000)
+    area_id: str | None = Field(default=None, max_length=64)
+    salary: SearchSalaryCriteria | None = None
+    experience: str | None = Field(default=None, max_length=64)
+    employment: str | None = Field(default=None, max_length=64)
+    schedule: str | None = Field(default=None, max_length=64)
+    search_field: str | None = Field(default=None, max_length=64)
+    only_with_salary: bool | None = None
+
+
+class SearchProfileUpdate(BaseModel):
+    """Partial update of SearchProfile semantic criteria."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = Field(default=None, max_length=255)
+    text: str | None = Field(default=None, min_length=1, max_length=1000)
+    area_id: str | None = Field(default=None, max_length=64)
+    salary: SearchSalaryCriteria | None = None
+    experience: str | None = Field(default=None, max_length=64)
+    employment: str | None = Field(default=None, max_length=64)
+    schedule: str | None = Field(default=None, max_length=64)
+    search_field: str | None = Field(default=None, max_length=64)
+    only_with_salary: bool | None = None
+
+
+class SearchProfileRead(BaseModel):
+    """Public SearchProfile representation."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    label: str | None
+    text: str
+    area_id: str | None
+    salary: dict[str, object] | None
+    experience: str | None
+    employment: str | None
+    schedule: str | None
+    search_field: str | None
+    only_with_salary: bool | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SearchProfileList(BaseModel):
+    """Collection envelope for SearchProfile."""
+
+    items: list[SearchProfileRead]
+    total: int
+
+
+class SearchExecutionSettings(BaseModel):
+    """Runtime acquisition knobs stored only on SearchRun.execution_snapshot."""
+
+    model_config = ConfigDict(extra="allow")
+
+    order: str = Field(default="publication_time", min_length=1, max_length=64)
+    page_size: int = Field(default=20, ge=1, le=100)
+    max_pages: int = Field(default=5, ge=1, le=100)
+
+
+class SearchRunCreate(BaseModel):
+    """Start a SearchRun from a SearchProfile with explicit execution settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    search_profile_id: uuid.UUID
+    execution: SearchExecutionSettings | None = None
+    candidate_context_snapshot: dict[str, object] | None = None
+
+
+class SearchRunRead(BaseModel):
+    """Public SearchRun including immutable snapshots and aggregate counters."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    search_profile_id: uuid.UUID
+    source: str
+    criteria_snapshot: dict[str, object]
+    execution_snapshot: dict[str, object]
+    candidate_context_snapshot: dict[str, object] | None
+    status: SearchRunStatus
+    started_at: datetime
+    finished_at: datetime | None
+    found_count: int
+    created_count: int
+    updated_count: int
+    unchanged_count: int
+    error_count: int
+    error_code: str | None
+    recovery_hint: str | None
+
+
+class SearchRunList(BaseModel):
+    """Collection envelope for SearchRun."""
+
+    items: list[SearchRunRead]
+    total: int
+
+
+class SearchRunItemCreate(BaseModel):
+    """Record one discovered source vacancy outcome inside a running SearchRun."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_external_id: str = Field(min_length=1, max_length=255)
+    outcome: SearchRunItemOutcome
+    vacancy_id: uuid.UUID | None = None
+    discovered_at: datetime | None = None
+    page: int | None = Field(default=None, ge=0)
+    error_code: str | None = Field(default=None, max_length=128)
+    error_detail: str | None = Field(default=None, max_length=1000)
+
+
+class SearchRunItemRead(BaseModel):
+    """Public SearchRunItem provenance row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    search_run_id: uuid.UUID
+    source_external_id: str
+    vacancy_id: uuid.UUID | None
+    outcome: SearchRunItemOutcome
+    discovered_at: datetime | None
+    page: int | None
+    error_code: str | None
+    error_detail: str | None
+
+
+class SearchRunItemList(BaseModel):
+    """Collection envelope for SearchRunItem."""
+
+    items: list[SearchRunItemRead]
+    total: int
+
+
+class SearchRunFinalize(BaseModel):
+    """Move a running SearchRun into a terminal status."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: SearchRunStatus
+    error_code: str | None = Field(default=None, max_length=128)
+    recovery_hint: str | None = Field(default=None, max_length=500)
 
 
 class ErrorDetail(BaseModel):

@@ -105,10 +105,40 @@ from job_search_core.schemas import (
     ResumeVersionIngestResultRead,
     ResumeVersionMetaRead,
     ResumeVersionRead,
+    SearchProfileCreate,
+    SearchProfileList,
+    SearchProfileRead,
+    SearchProfileUpdate,
+    SearchRunCreate,
+    SearchRunFinalize,
+    SearchRunItemCreate,
+    SearchRunItemList,
+    SearchRunItemRead,
+    SearchRunList,
+    SearchRunRead,
     VacancyCreate,
     VacancyList,
     VacancyRead,
     VacancyStatusUpdate,
+)
+from job_search_core.search_runs import (
+    SearchProfileNotFoundError,
+    SearchRunItemConflictError,
+    SearchRunItemValidationError,
+    SearchRunNotFoundError,
+    SearchRunNotRunningError,
+    SearchValidationError,
+    VacancyNotFoundForItemError,
+    add_search_run_item,
+    create_search_profile,
+    finalize_search_run,
+    get_search_profile,
+    get_search_run,
+    list_search_profiles,
+    list_search_run_items,
+    list_search_runs,
+    start_search_run,
+    update_search_profile,
 )
 from job_search_core.vacancies import (
     IdempotencyConflictError,
@@ -612,6 +642,203 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
                     404,
                 )
             return ResumeVersionRead.model_validate(row)
+
+    @application.post(
+        "/api/v1/search-profiles",
+        response_model=SearchProfileRead,
+        status_code=201,
+        responses={400: {"model": ErrorDetail}},
+        tags=["search-profiles"],
+    )
+    def post_search_profile(
+        request: SearchProfileCreate,
+    ) -> SearchProfileRead | JSONResponse:
+        """Create one mutable SearchProfile with semantic criteria only."""
+        try:
+            with persistence.session() as session:
+                profile = create_search_profile(session, request)
+                return SearchProfileRead.model_validate(profile)
+        except SearchValidationError as error:
+            return error_response("invalid_search_profile", str(error), 400)
+
+    @application.get(
+        "/api/v1/search-profiles",
+        response_model=SearchProfileList,
+        tags=["search-profiles"],
+    )
+    def get_search_profiles() -> SearchProfileList:
+        """List SearchProfiles newest first."""
+        with persistence.session() as session:
+            items = [
+                SearchProfileRead.model_validate(item) for item in list_search_profiles(session)
+            ]
+        return SearchProfileList(items=items, total=len(items))
+
+    @application.get(
+        "/api/v1/search-profiles/{profile_id}",
+        response_model=SearchProfileRead,
+        responses={404: {"model": ErrorDetail}},
+        tags=["search-profiles"],
+    )
+    def get_search_profile_route(profile_id: uuid.UUID) -> SearchProfileRead | JSONResponse:
+        """Read one SearchProfile."""
+        with persistence.session() as session:
+            profile = get_search_profile(session, profile_id)
+            if profile is None:
+                return error_response("search_profile_not_found", "SearchProfile not found", 404)
+            return SearchProfileRead.model_validate(profile)
+
+    @application.patch(
+        "/api/v1/search-profiles/{profile_id}",
+        response_model=SearchProfileRead,
+        responses={400: {"model": ErrorDetail}, 404: {"model": ErrorDetail}},
+        tags=["search-profiles"],
+    )
+    def patch_search_profile(
+        profile_id: uuid.UUID, request: SearchProfileUpdate
+    ) -> SearchProfileRead | JSONResponse:
+        """Update semantic SearchProfile fields without touching past SearchRun snapshots."""
+        try:
+            with persistence.session() as session:
+                profile = update_search_profile(session, profile_id, request)
+                return SearchProfileRead.model_validate(profile)
+        except SearchProfileNotFoundError:
+            return error_response("search_profile_not_found", "SearchProfile not found", 404)
+        except SearchValidationError as error:
+            return error_response("invalid_search_profile", str(error), 400)
+
+    @application.post(
+        "/api/v1/search-runs",
+        response_model=SearchRunRead,
+        status_code=201,
+        responses={400: {"model": ErrorDetail}, 404: {"model": ErrorDetail}},
+        tags=["search-runs"],
+    )
+    def post_search_run(request: SearchRunCreate) -> SearchRunRead | JSONResponse:
+        """Start a running SearchRun with frozen criteria and execution snapshots."""
+        try:
+            with persistence.session() as session:
+                run = start_search_run(session, request)
+                return SearchRunRead.model_validate(run)
+        except SearchProfileNotFoundError:
+            return error_response("search_profile_not_found", "SearchProfile not found", 404)
+        except SearchValidationError as error:
+            return error_response("invalid_search_run", str(error), 400)
+
+    @application.get(
+        "/api/v1/search-runs",
+        response_model=SearchRunList,
+        tags=["search-runs"],
+    )
+    def get_search_runs(
+        search_profile_id: uuid.UUID | None = None,
+    ) -> SearchRunList:
+        """List SearchRuns newest first."""
+        with persistence.session() as session:
+            items = [
+                SearchRunRead.model_validate(item)
+                for item in list_search_runs(session, search_profile_id=search_profile_id)
+            ]
+        return SearchRunList(items=items, total=len(items))
+
+    @application.get(
+        "/api/v1/search-runs/{run_id}",
+        response_model=SearchRunRead,
+        responses={404: {"model": ErrorDetail}},
+        tags=["search-runs"],
+    )
+    def get_search_run_route(run_id: uuid.UUID) -> SearchRunRead | JSONResponse:
+        """Read one SearchRun including snapshots and counters."""
+        with persistence.session() as session:
+            run = get_search_run(session, run_id)
+            if run is None:
+                return error_response("search_run_not_found", "SearchRun not found", 404)
+            return SearchRunRead.model_validate(run)
+
+    @application.post(
+        "/api/v1/search-runs/{run_id}/items",
+        response_model=SearchRunItemRead,
+        status_code=201,
+        responses={
+            400: {"model": ErrorDetail},
+            404: {"model": ErrorDetail},
+            409: {"model": ErrorDetail},
+        },
+        tags=["search-runs"],
+    )
+    def post_search_run_item(
+        run_id: uuid.UUID, request: SearchRunItemCreate
+    ) -> SearchRunItemRead | JSONResponse:
+        """Record one SearchRunItem outcome while the run is still running."""
+        try:
+            with persistence.session() as session:
+                item = add_search_run_item(session, run_id, request)
+                return SearchRunItemRead.model_validate(item)
+        except SearchRunNotFoundError:
+            return error_response("search_run_not_found", "SearchRun not found", 404)
+        except SearchRunNotRunningError:
+            return error_response(
+                "search_run_not_running",
+                "SearchRun is not running",
+                409,
+            )
+        except VacancyNotFoundForItemError:
+            return error_response("vacancy_not_found", "Vacancy does not exist", 404)
+        except SearchRunItemConflictError:
+            return error_response(
+                "search_run_item_exists",
+                "SearchRunItem for this source_external_id already exists",
+                409,
+            )
+        except SearchRunItemValidationError as error:
+            return error_response("invalid_search_run_item", str(error), 400)
+
+    @application.get(
+        "/api/v1/search-runs/{run_id}/items",
+        response_model=SearchRunItemList,
+        responses={404: {"model": ErrorDetail}},
+        tags=["search-runs"],
+    )
+    def get_search_run_items(run_id: uuid.UUID) -> SearchRunItemList | JSONResponse:
+        """List SearchRunItems for one SearchRun."""
+        try:
+            with persistence.session() as session:
+                items = [
+                    SearchRunItemRead.model_validate(item)
+                    for item in list_search_run_items(session, run_id)
+                ]
+            return SearchRunItemList(items=items, total=len(items))
+        except SearchRunNotFoundError:
+            return error_response("search_run_not_found", "SearchRun not found", 404)
+
+    @application.post(
+        "/api/v1/search-runs/{run_id}/finalize",
+        response_model=SearchRunRead,
+        responses={
+            400: {"model": ErrorDetail},
+            404: {"model": ErrorDetail},
+            409: {"model": ErrorDetail},
+        },
+        tags=["search-runs"],
+    )
+    def post_search_run_finalize(
+        run_id: uuid.UUID, request: SearchRunFinalize
+    ) -> SearchRunRead | JSONResponse:
+        """Finalize a running SearchRun and recompute aggregate counters from items."""
+        try:
+            with persistence.session() as session:
+                run = finalize_search_run(session, run_id, request)
+                return SearchRunRead.model_validate(run)
+        except SearchRunNotFoundError:
+            return error_response("search_run_not_found", "SearchRun not found", 404)
+        except SearchRunNotRunningError:
+            return error_response(
+                "search_run_not_running",
+                "SearchRun is not running",
+                409,
+            )
+        except SearchValidationError as error:
+            return error_response("invalid_search_run_finalize", str(error), 400)
 
     return application
 

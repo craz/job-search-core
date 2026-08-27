@@ -107,3 +107,22 @@ def test_candidate_context_v1_contract_publishes_get_and_hh_link_put() -> None:
     assert "put" in document["paths"]["/api/v1/candidate-context/hh-resume-link"]
     assert "CandidateContextRead" in document["components"]["schemas"]
     assert "HhResumeLinkUpdate" in document["components"]["schemas"]
+
+
+def test_search_profile_run_v1_contract_publishes_core_surface() -> None:
+    """Consumers discover R2.2.1 SearchProfile / SearchRun / SearchRunItem routes."""
+    document = create_app().openapi()
+    paths = document["paths"]
+    assert {"get", "post"} <= paths["/api/v1/search-profiles"].keys()
+    assert {"get", "patch"} <= paths["/api/v1/search-profiles/{profile_id}"].keys()
+    assert {"get", "post"} <= paths["/api/v1/search-runs"].keys()
+    assert "get" in paths["/api/v1/search-runs/{run_id}"]
+    assert {"get", "post"} <= paths["/api/v1/search-runs/{run_id}/items"].keys()
+    assert "post" in paths["/api/v1/search-runs/{run_id}/finalize"]
+    schemas = document["components"]["schemas"]
+    assert "SearchProfileCreate" in schemas
+    assert "SearchProfileRead" in schemas
+    assert "SearchRunCreate" in schemas
+    assert "SearchRunRead" in schemas
+    assert "SearchRunItemCreate" in schemas
+    assert "SearchRunFinalize" in schemas

@@ -423,3 +423,133 @@ class ResumeVersion(Base):
     transport: Mapped[str] = mapped_column(String(64), default="browser_readonly")
     extractor_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     profile_version: Mapped[ProfileVersion] = relationship(back_populates="resume_versions")
+
+
+class SearchRunStatus(StrEnum):
+    """Lifecycle of one SearchRun execution."""
+
+    RUNNING = "running"
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    FAILED = "failed"
+
+
+class SearchRunItemOutcome(StrEnum):
+    """Ingestion outcome for one source vacancy inside a SearchRun."""
+
+    CREATED = "created"
+    UPDATED = "updated"
+    UNCHANGED = "unchanged"
+    ERROR = "error"
+
+
+class SearchProfile(Base):
+    """Mutable semantic search intent (R2.2.1). No execution/runtime knobs."""
+
+    __tablename__ = "search_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    text: Mapped[str] = mapped_column(String(1000))
+    area_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    salary: Mapped[dict[str, object] | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=True
+    )
+    experience: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    employment: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    schedule: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    search_field: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    only_with_salary: Mapped[bool | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    runs: Mapped[list[SearchRun]] = relationship(back_populates="search_profile")
+
+
+class SearchRun(Base):
+    """One search execution with immutable criteria and execution snapshots."""
+
+    __tablename__ = "search_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    search_profile_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("search_profiles.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(64), default="hh")
+    criteria_snapshot: Mapped[dict[str, object]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
+    execution_snapshot: Mapped[dict[str, object]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
+    candidate_context_snapshot: Mapped[dict[str, object] | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=True
+    )
+    status: Mapped[SearchRunStatus] = mapped_column(
+        Enum(
+            SearchRunStatus,
+            name="search_run_status",
+            native_enum=False,
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        default=SearchRunStatus.RUNNING,
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    found_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_count: Mapped[int] = mapped_column(Integer, default=0)
+    unchanged_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    recovery_hint: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    search_profile: Mapped[SearchProfile] = relationship(back_populates="runs")
+    items: Mapped[list[SearchRunItem]] = relationship(back_populates="search_run")
+
+
+class SearchRunItem(Base):
+    """Per-source-vacancy provenance row for one SearchRun."""
+
+    __tablename__ = "search_run_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "search_run_id",
+            "source_external_id",
+            name="uq_search_run_items_run_external",
+        ),
+        CheckConstraint(
+            "outcome = 'error' OR vacancy_id IS NOT NULL",
+            name="ck_search_run_items_vacancy_required",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    search_run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("search_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    source_external_id: Mapped[str] = mapped_column(String(255))
+    vacancy_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("vacancies.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    outcome: Mapped[SearchRunItemOutcome] = mapped_column(
+        Enum(
+            SearchRunItemOutcome,
+            name="search_run_item_outcome",
+            native_enum=False,
+            values_callable=lambda enum: [item.value for item in enum],
+        )
+    )
+    discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    search_run: Mapped[SearchRun] = relationship(back_populates="items")
+    vacancy: Mapped[Vacancy | None] = relationship()
