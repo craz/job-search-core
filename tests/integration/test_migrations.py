@@ -53,6 +53,7 @@ def test_migration_upgrades_an_empty_database(tmp_path: Path, monkeypatch: Monke
         "profile_versions",
         "active_hh_resume_links",
         "resume_versions",
+        "resume_artifacts",
         "search_profiles",
         "search_runs",
         "search_run_items",

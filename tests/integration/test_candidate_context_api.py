@@ -12,6 +12,7 @@ def test_candidate_context_empty_then_link_then_clear() -> None:
         "profile_version": None,
         "hh_resume_link": None,
         "resume_content": None,
+        "resume_file": None,
     }
 
     linked = client.put(

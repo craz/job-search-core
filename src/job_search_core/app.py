@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from pathlib import Path
 from typing import Annotated, Final
 
-from fastapi import FastAPI, Header, Query, Response, status
+from fastapi import FastAPI, File, Header, Query, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
@@ -68,6 +69,13 @@ from job_search_core.people import (
     list_people,
     update_person_status,
 )
+from job_search_core.resume_artifacts import (
+    ResumeArtifactValidationError,
+    get_resume_artifact,
+    ingest_resume_artifact,
+    load_resume_artifact_bytes,
+    resume_file_meta,
+)
 from job_search_core.resume_versions import (
     ResumeVersionValidationError,
     get_resume_version,
@@ -100,7 +108,10 @@ from job_search_core.schemas import (
     PersonRead,
     PersonStatusUpdate,
     ProfileVersionRead,
+    ResumeArtifactIngestResultRead,
+    ResumeArtifactRead,
     ResumeContentMetaRead,
+    ResumeFileMetaRead,
     ResumeVersionIngest,
     ResumeVersionIngestResultRead,
     ResumeVersionMetaRead,
@@ -184,6 +195,12 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
     """
     runtime_settings = settings or Settings()
     persistence = database or Database(runtime_settings.database_url)
+    artifact_root = Path(runtime_settings.artifact_dir)
+
+    def ensure_artifact_root() -> Path:
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        return artifact_root
+
     application = FastAPI(
         title="Job Search Core API",
         version=__version__,
@@ -574,6 +591,10 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
         version = getattr(context, "profile_version", None)
         link = getattr(context, "hh_resume_link", None)
         meta = resume_content_meta(session, context)  # type: ignore[arg-type]
+        file_meta = resume_file_meta(
+            session,  # type: ignore[arg-type]
+            meta.resume_version_id if meta is not None else None,
+        )
         return CandidateContextRead(
             candidate_profile=(
                 CandidateProfileRead.model_validate(profile) if profile is not None else None
@@ -592,6 +613,18 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
                     schema_version=meta.schema_version,
                 )
                 if meta is not None
+                else None
+            ),
+            resume_file=(
+                ResumeFileMetaRead(
+                    artifact_id=file_meta.artifact_id,
+                    mime_type=file_meta.mime_type,
+                    original_filename=file_meta.original_filename,
+                    size_bytes=file_meta.size_bytes,
+                    captured_at=file_meta.captured_at,
+                    format_label=file_meta.format_label,
+                )
+                if file_meta is not None
                 else None
             ),
         )
@@ -665,6 +698,89 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
                     404,
                 )
             return ResumeVersionRead.model_validate(row)
+
+    @application.post(
+        "/api/v1/resume-versions/{resume_version_id}/artifacts",
+        response_model=ResumeArtifactIngestResultRead,
+        responses={400: {"model": ErrorDetail}, 404: {"model": ErrorDetail}},
+        tags=["resume-artifacts"],
+    )
+    async def post_resume_artifact(
+        resume_version_id: uuid.UUID,
+        file: UploadFile = File(...),
+        captured_at: Annotated[str | None, Query()] = None,
+    ) -> ResumeArtifactIngestResultRead | JSONResponse:
+        """Store auxiliary HH resume file bytes linked to an existing ResumeVersion."""
+        from datetime import datetime
+
+        data = await file.read()
+        mime_type = (file.content_type or "application/octet-stream").strip()
+        filename = (file.filename or "resume").strip()
+        captured: datetime | None = None
+        if captured_at:
+            captured = datetime.fromisoformat(captured_at.replace("Z", "+00:00"))
+        try:
+            with persistence.session() as session:
+                result = ingest_resume_artifact(
+                    session,
+                    artifact_root=ensure_artifact_root(),
+                    resume_version_id=resume_version_id,
+                    data=data,
+                    mime_type=mime_type,
+                    original_filename=filename,
+                    captured_at=captured,
+                )
+                context = get_candidate_context(session)
+                return ResumeArtifactIngestResultRead(
+                    created=result.created,
+                    blob_created=result.blob_created,
+                    artifact=ResumeArtifactRead.model_validate(result.artifact),
+                    candidate_context=_candidate_context_payload(session, context),
+                )
+        except ResumeArtifactValidationError as error:
+            message = str(error)
+            code = (
+                "resume_version_not_found"
+                if message == "resume_version not found"
+                else "invalid_resume_artifact"
+            )
+            status_code = 404 if code == "resume_version_not_found" else 400
+            return error_response(code, message, status_code)
+
+    @application.get(
+        "/api/v1/resume-artifacts/{artifact_id}",
+        response_model=ResumeArtifactRead,
+        responses={404: {"model": ErrorDetail}},
+        tags=["resume-artifacts"],
+    )
+    def get_resume_artifact_route(artifact_id: uuid.UUID) -> ResumeArtifactRead | JSONResponse:
+        """Return auxiliary resume file metadata."""
+        with persistence.session() as session:
+            row = get_resume_artifact(session, artifact_id)
+            if row is None:
+                return error_response("resume_artifact_not_found", "Resume artifact not found", 404)
+            return ResumeArtifactRead.model_validate(row)
+
+    @application.get(
+        "/api/v1/resume-artifacts/{artifact_id}/download",
+        response_model=None,
+        responses={404: {"model": ErrorDetail}},
+        tags=["resume-artifacts"],
+    )
+    def download_resume_artifact_route(artifact_id: uuid.UUID) -> Response | JSONResponse:
+        """Stream exact stored resume file bytes."""
+        with persistence.session() as session:
+            row = get_resume_artifact(session, artifact_id)
+            if row is None:
+                return error_response("resume_artifact_not_found", "Resume artifact not found", 404)
+            try:
+                payload = load_resume_artifact_bytes(artifact_root, row)
+            except ResumeArtifactValidationError:
+                return error_response("resume_artifact_missing", "Resume artifact blob missing", 404)
+        headers = {
+            "Content-Disposition": f'attachment; filename="{row.original_filename}"',
+        }
+        return Response(content=payload, media_type=row.mime_type, headers=headers)
 
     @application.post(
         "/api/v1/search-profiles",

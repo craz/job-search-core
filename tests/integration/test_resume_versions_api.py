@@ -95,4 +95,5 @@ def test_candidate_context_empty_includes_null_resume_content() -> None:
         "profile_version": None,
         "hh_resume_link": None,
         "resume_content": None,
+        "resume_file": None,
     }

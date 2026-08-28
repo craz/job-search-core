@@ -471,6 +471,17 @@ class HhResumeLinkRead(BaseModel):
     updated_at: datetime
 
 
+class ResumeFileMetaRead(BaseModel):
+    """Auxiliary local HH resume file metadata (no scoring semantics)."""
+
+    artifact_id: uuid.UUID
+    mime_type: str
+    original_filename: str
+    size_bytes: int
+    captured_at: datetime
+    format_label: str
+
+
 class ResumeContentMetaRead(BaseModel):
     """ResumeVersion metadata only (no CV body) for candidate-context."""
 
@@ -489,6 +500,30 @@ class CandidateContextRead(BaseModel):
     profile_version: ProfileVersionRead | None
     hh_resume_link: HhResumeLinkRead | None
     resume_content: ResumeContentMetaRead | None = None
+    resume_file: ResumeFileMetaRead | None = None
+
+
+class ResumeArtifactRead(BaseModel):
+    """Public auxiliary resume file artifact metadata."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    resume_version_id: uuid.UUID
+    source: str
+    sha256: str
+    mime_type: str
+    original_filename: str
+    size_bytes: int
+    captured_at: datetime
+    created_at: datetime
+
+
+class ResumeArtifactIngestResultRead(BaseModel):
+    created: bool
+    blob_created: bool
+    artifact: ResumeArtifactRead
+    candidate_context: CandidateContextRead | None = None
 
 
 class ResumeVersionIngest(BaseModel):

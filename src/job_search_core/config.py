@@ -18,3 +18,4 @@ class Settings(BaseSettings):
     port: int = 8000
     log_level: str = "INFO"
     database_url: str = "postgresql+psycopg://job_search:job_search@127.0.0.1:5432/job_search"
+    artifact_dir: str = "/var/lib/job-search-core/artifacts"

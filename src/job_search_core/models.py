@@ -8,6 +8,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -471,6 +472,37 @@ class ResumeVersion(Base):
     transport: Mapped[str] = mapped_column(String(64), default="browser_readonly")
     extractor_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     profile_version: Mapped[ProfileVersion] = relationship(back_populates="resume_versions")
+    artifacts: Mapped[list[ResumeArtifact]] = relationship(back_populates="resume_version")
+
+
+class ResumeArtifact(Base):
+    """Auxiliary local file archived from HH download; no scoring semantics."""
+
+    __tablename__ = "resume_artifacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "resume_version_id",
+            "sha256",
+            name="uq_resume_artifacts_version_sha256",
+        ),
+        UniqueConstraint("storage_key", name="uq_resume_artifacts_storage_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    resume_version_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("resume_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(64), default="hh")
+    sha256: Mapped[str] = mapped_column(String(64))
+    storage_key: Mapped[str] = mapped_column(String(128))
+    mime_type: Mapped[str] = mapped_column(String(255))
+    original_filename: Mapped[str] = mapped_column(String(500))
+    size_bytes: Mapped[int] = mapped_column(BigInteger())
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    resume_version: Mapped[ResumeVersion] = relationship(back_populates="artifacts")
 
 
 class SearchRunStatus(StrEnum):
