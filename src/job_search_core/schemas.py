@@ -6,10 +6,11 @@ import uuid
 from datetime import date, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 from job_search_core.models import (
     ApplicationResult,
+    AssessmentScoringMode,
     AssessmentVerdict,
     HhResumeLinkStatus,
     HypothesisStatus,
@@ -309,6 +310,17 @@ class HypothesisList(BaseModel):
     total: int
 
 
+class AssessmentDetail(BaseModel):
+    """Structured v1 explanation stored in Assessment.detail JSONB."""
+
+    reason: str = Field(min_length=1, max_length=4000)
+    risk: str | None = Field(default=None, max_length=4000)
+    action: str = Field(min_length=1, max_length=1000)
+    strengths: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    deterministic_signals: list[str] = Field(default_factory=list)
+
+
 class AssessmentCreate(BaseModel):
     """Validated normalized result accepted from a scoring producer."""
 
@@ -317,12 +329,49 @@ class AssessmentCreate(BaseModel):
     external_id: str = Field(min_length=1, max_length=255)
     relevance_score: int = Field(ge=0, le=100)
     verdict: AssessmentVerdict
-    reason: str = Field(min_length=1, max_length=4000)
+    reason: str | None = Field(default=None, min_length=1, max_length=4000)
     risk: str | None = Field(default=None, max_length=4000)
-    action: str = Field(min_length=1, max_length=1000)
+    action: str | None = Field(default=None, min_length=1, max_length=1000)
     model: str = Field(min_length=1, max_length=255)
     prompt_version: str = Field(min_length=1, max_length=255)
     assessed_at: datetime
+    schema_version: int | None = None
+    detail: AssessmentDetail | None = None
+    vacancy_content_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    profile_version_id: uuid.UUID | None = None
+    resume_version_id: uuid.UUID | None = None
+    candidate_context_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    scoring_mode: AssessmentScoringMode | None = None
+    policy_id: str | None = Field(default=None, min_length=1, max_length=64)
+    policy_version: int | None = Field(default=None, ge=1)
+    policy_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    model_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
+    scoring_identity_hash: str | None = Field(default=None, min_length=64, max_length=64)
+
+    @model_validator(mode="after")
+    def validate_scoring_contract(self) -> AssessmentCreate:
+        if self.schema_version == 1:
+            required: list[tuple[str, object | None]] = [
+                ("vacancy_content_hash", self.vacancy_content_hash),
+                ("profile_version_id", self.profile_version_id),
+                ("resume_version_id", self.resume_version_id),
+                ("candidate_context_hash", self.candidate_context_hash),
+                ("scoring_mode", self.scoring_mode),
+                ("policy_id", self.policy_id),
+                ("policy_version", self.policy_version),
+                ("policy_hash", self.policy_hash),
+                ("model_fingerprint", self.model_fingerprint),
+                ("scoring_identity_hash", self.scoring_identity_hash),
+                ("detail", self.detail),
+            ]
+            missing = [name for name, value in required if value is None]
+            if missing:
+                message = f"schema_version=1 requires: {', '.join(missing)}"
+                raise ValueError(message)
+            return self
+        if not self.reason or not self.action:
+            raise ValueError("legacy Assessment requires reason and action")
+        return self
 
 
 class AssessmentRead(BaseModel):
@@ -335,14 +384,37 @@ class AssessmentRead(BaseModel):
     external_id: str
     relevance_score: int
     verdict: AssessmentVerdict
-    reason: str
+    reason: str | None
     risk: str | None
-    action: str
+    action: str | None
     model: str
     prompt_version: str
     assessed_at: datetime
     created_at: datetime
+    schema_version: int | None = None
+    detail: AssessmentDetail | None = None
+    vacancy_content_hash: str | None = None
+    profile_version_id: uuid.UUID | None = None
+    resume_version_id: uuid.UUID | None = None
+    candidate_context_hash: str | None = None
+    scoring_mode: AssessmentScoringMode | None = None
+    policy_id: str | None = None
+    policy_version: int | None = None
+    policy_hash: str | None = None
+    model_fingerprint: str | None = None
+    scoring_identity_hash: str | None = None
     vacancy: ApplicationVacancyRead
+
+    @field_validator("detail", mode="before")
+    @classmethod
+    def parse_detail(cls, value: object) -> AssessmentDetail | None:
+        if value is None:
+            return None
+        if isinstance(value, AssessmentDetail):
+            return value
+        if isinstance(value, dict):
+            return AssessmentDetail.model_validate(value)
+        raise TypeError("detail must be an object or mapping")
 
 
 class AssessmentList(BaseModel):

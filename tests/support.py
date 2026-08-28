@@ -114,12 +114,14 @@ def person_payload(company_id: object, vacancy_id: object | None = None) -> dict
     }
 
 
-def assessment_payload(vacancy_id: object) -> dict[str, object]:
+def assessment_payload(
+    vacancy_id: object, *, external_id: str = "assessment-100"
+) -> dict[str, object]:
     """Return one normalized synthetic scoring result without raw model output."""
     return {
         "vacancy_id": str(vacancy_id),
         "source": "fixture",
-        "external_id": "assessment-100",
+        "external_id": external_id,
         "relevance_score": 82,
         "verdict": "apply",
         "reason": "Strong synthetic match",
@@ -128,4 +130,44 @@ def assessment_payload(vacancy_id: object) -> dict[str, object]:
         "model": "fixture-model",
         "prompt_version": "fixture-v1",
         "assessed_at": "2026-08-20T12:00:00Z",
+    }
+
+
+def assessment_v1_payload(vacancy_id: object) -> dict[str, object]:
+    """Return one canonical v1 Assessment with complete provenance."""
+    profile_id = "11111111-1111-4111-8111-111111111111"
+    resume_id = "22222222-2222-4222-8222-222222222222"
+    vacancy_hash = "a" * 64
+    context_hash = "b" * 64
+    policy_hash = "c" * 64
+    model_fp = "d" * 64
+    identity = "e" * 64
+    return {
+        "vacancy_id": str(vacancy_id),
+        "source": "fixture",
+        "external_id": "assessment-v1-100",
+        "relevance_score": 82,
+        "verdict": "apply",
+        "model": "fixture-model",
+        "prompt_version": "policy-v1",
+        "assessed_at": "2026-08-20T12:00:00Z",
+        "schema_version": 1,
+        "vacancy_content_hash": vacancy_hash,
+        "profile_version_id": profile_id,
+        "resume_version_id": resume_id,
+        "candidate_context_hash": context_hash,
+        "scoring_mode": "fast",
+        "policy_id": "default",
+        "policy_version": 1,
+        "policy_hash": policy_hash,
+        "model_fingerprint": model_fp,
+        "scoring_identity_hash": identity,
+        "detail": {
+            "reason": "Strong synthetic match",
+            "risk": "Limited domain context",
+            "action": "Prepare a tailored application",
+            "strengths": ["python"],
+            "gaps": ["domain"],
+            "deterministic_signals": [],
+        },
     }

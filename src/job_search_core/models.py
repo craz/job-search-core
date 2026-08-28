@@ -14,11 +14,13 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -83,6 +85,13 @@ class AssessmentVerdict(StrEnum):
     APPLY = "apply"
     MAYBE = "maybe"
     SKIP = "skip"
+
+
+class AssessmentScoringMode(StrEnum):
+    """Scoring depth for fast batch vs detailed analysis."""
+
+    FAST = "fast"
+    DETAILED = "detailed"
 
 
 class Company(Base):
@@ -317,6 +326,13 @@ class Assessment(Base):
             "relevance_score >= 0 AND relevance_score <= 100",
             name="ck_assessments_relevance_score",
         ),
+        Index(
+            "uq_assessments_scoring_identity_hash",
+            "scoring_identity_hash",
+            unique=True,
+            postgresql_where=text("scoring_identity_hash IS NOT NULL"),
+            sqlite_where=text("scoring_identity_hash IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -329,14 +345,31 @@ class Assessment(Base):
     verdict: Mapped[AssessmentVerdict] = mapped_column(
         Enum(AssessmentVerdict, name="assessment_verdict", native_enum=False)
     )
-    reason: Mapped[str] = mapped_column(Text())
+    reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
     risk: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    action: Mapped[str] = mapped_column(String(1000))
+    action: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     model: Mapped[str] = mapped_column(String(255))
     prompt_version: Mapped[str] = mapped_column(String(255))
     assessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     idempotency_key: Mapped[str] = mapped_column(String(255))
     request_fingerprint: Mapped[str] = mapped_column(String(64))
+    vacancy_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    profile_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    resume_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    candidate_context_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scoring_mode: Mapped[AssessmentScoringMode | None] = mapped_column(
+        Enum(AssessmentScoringMode, name="assessment_scoring_mode", native_enum=False),
+        nullable=True,
+    )
+    policy_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    policy_version: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    policy_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scoring_identity_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    schema_version: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    detail: Mapped[dict[str, object] | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     vacancy: Mapped[Vacancy] = relationship(back_populates="assessments")
 
