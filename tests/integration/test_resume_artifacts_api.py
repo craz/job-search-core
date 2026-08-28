@@ -47,6 +47,7 @@ def test_resume_artifact_download_round_trip(tmp_path, monkeypatch) -> None:
     assert downloaded.status_code == 200
     assert downloaded.content == b"%PDF-1.4 test"
     assert downloaded.headers["content-type"].startswith("application/pdf")
+    assert "filename*=" in downloaded.headers.get("content-disposition", "")
     context = client.get("/api/v1/candidate-context")
     resume_file = context.json().get("resume_file")
     assert resume_file is not None

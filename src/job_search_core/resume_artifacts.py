@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 from uuid import UUID
 
 from sqlalchemy import select
@@ -21,6 +22,14 @@ from job_search_core.resume_artifact_storage import (
 )
 
 _FILENAME_RE = re.compile(r"^[^/\\]+$")
+_ASCII_FILENAME_RE = re.compile(r"[^\x20-\x7E]")
+
+
+def content_disposition_attachment(original_filename: str) -> str:
+    """Build RFC 5987 Content-Disposition safe for non-ASCII HH filenames."""
+    cleaned = Path(original_filename).name.strip() or "resume"
+    ascii_fallback = _ASCII_FILENAME_RE.sub("_", cleaned).strip("._") or "resume"
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(cleaned)}"
 
 
 class ResumeArtifactValidationError(Exception):

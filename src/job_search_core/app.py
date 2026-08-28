@@ -71,6 +71,7 @@ from job_search_core.people import (
 )
 from job_search_core.resume_artifacts import (
     ResumeArtifactValidationError,
+    content_disposition_attachment,
     get_resume_artifact,
     ingest_resume_artifact,
     load_resume_artifact_bytes,
@@ -778,7 +779,7 @@ def create_app(*, settings: Settings | None = None, database: Database | None = 
             except ResumeArtifactValidationError:
                 return error_response("resume_artifact_missing", "Resume artifact blob missing", 404)
         headers = {
-            "Content-Disposition": f'attachment; filename="{row.original_filename}"',
+            "Content-Disposition": content_disposition_attachment(row.original_filename),
         }
         return Response(content=payload, media_type=row.mime_type, headers=headers)
 
