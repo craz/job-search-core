@@ -113,8 +113,37 @@ def test_v1_detail_round_trip_columns() -> None:
         assert row.detail is not None
         assert row.detail["reason"] == request.detail.reason  # type: ignore[union-attr]
         assert row.reason == request.detail.reason  # type: ignore[union-attr]
+        assert row.action == request.detail.action  # type: ignore[union-attr]
+        assert row.risk == request.detail.risk  # type: ignore[union-attr]
         assert row.candidate_context_hash is not None
         assert row.policy_hash is not None
+
+
+def test_v1_detail_is_canonical_explanation_source() -> None:
+    """schema_version=1 derives mirrored reason/action from detail, not vice versa."""
+    client = ApiClient()
+    vacancy = create_fixture_vacancy(client)
+    payload = assessment_v1_payload(vacancy["id"])
+    payload.pop("reason", None)
+    payload.pop("action", None)
+    payload.pop("risk", None)
+    request = AssessmentCreate.model_validate(payload)
+    with client.database.session() as session:
+        result = create_assessment(session, request, "canonical-detail")
+        row = result.assessment
+        assert row.detail is not None
+        assert row.reason == row.detail["reason"]
+        assert row.action == row.detail["action"]
+
+
+def test_v1_rejects_conflicting_top_level_reason() -> None:
+    """Top-level reason/action cannot diverge from canonical detail on v1 writes."""
+    client = ApiClient()
+    vacancy = create_fixture_vacancy(client)
+    payload = assessment_v1_payload(vacancy["id"])
+    payload["reason"] = "Conflicting legacy reason"
+    with pytest.raises(ValueError, match="top-level reason must match detail"):
+        AssessmentCreate.model_validate(payload)
 
 
 def test_partial_unique_scoring_identity_hash_enforced() -> None:

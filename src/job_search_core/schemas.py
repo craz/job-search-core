@@ -368,6 +368,13 @@ class AssessmentCreate(BaseModel):
             if missing:
                 message = f"schema_version=1 requires: {', '.join(missing)}"
                 raise ValueError(message)
+            if self.detail is not None:
+                if self.reason is not None and self.reason.strip() != self.detail.reason.strip():
+                    raise ValueError("schema_version=1: top-level reason must match detail")
+                if self.action is not None and self.action.strip() != self.detail.action.strip():
+                    raise ValueError("schema_version=1: top-level action must match detail")
+                if self.risk is not None and self.risk != self.detail.risk:
+                    raise ValueError("schema_version=1: top-level risk must match detail")
             return self
         if not self.reason or not self.action:
             raise ValueError("legacy Assessment requires reason and action")

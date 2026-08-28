@@ -47,6 +47,8 @@ def test_v1_assessment_exposes_provenance_on_read() -> None:
     assert body["scoring_identity_hash"] == payload["scoring_identity_hash"]
     assert body["candidate_context_hash"] == payload["candidate_context_hash"]
     assert body["detail"]["strengths"] == ["python"]
+    assert body["reason"] == body["detail"]["reason"]
+    assert body["action"] == body["detail"]["action"]
 
 
 def test_v1_identity_reuse_returns_existing_assessment() -> None:
